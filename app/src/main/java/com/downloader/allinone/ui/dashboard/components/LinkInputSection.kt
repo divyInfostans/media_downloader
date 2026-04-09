@@ -24,7 +24,8 @@ fun LinkInputSection(
     onValueChange: (String) -> Unit,
     onPasteClick: () -> Unit,
     onDownloadClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    placeholder: String = "https://..."
 ) {
     Row(
         modifier = modifier
@@ -47,7 +48,7 @@ fun LinkInputSection(
             onValueChange = onValueChange,
             placeholder = {
                 Text(
-                    "https://...",
+                    placeholder,
                     color = TextSecondary.copy(alpha = 0.3f),
                     fontWeight = FontWeight.Medium,
                     fontSize = 14.sp

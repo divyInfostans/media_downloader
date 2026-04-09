@@ -1,0 +1,169 @@
+package com.downloader.allinone.ui.youtube
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.downloader.allinone.ui.dashboard.components.LinkInputSection
+import com.downloader.allinone.ui.theme.PrimaryAccent
+import com.downloader.allinone.ui.theme.TextSecondary
+import com.downloader.allinone.ui.youtube.components.FormatOptionItem
+import com.downloader.allinone.ui.youtube.components.VideoPreviewCard
+import com.downloader.allinone.viewmodel.YouTubeDownloaderViewModel
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun YouTubeDownloaderScreen(
+    viewModel: YouTubeDownloaderViewModel,
+    onBackClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val uiState by viewModel.uiState.collectAsState()
+
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = {
+                    Text(
+                        text = "YouTube Downloader",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = (-1).sp
+                        )
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBackClick) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Back",
+                            tint = PrimaryAccent
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = Color.Transparent,
+                    titleContentColor = Color.White
+                ),
+                modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars)
+            )
+        },
+        containerColor = MaterialTheme.colorScheme.background
+    ) { paddingValues ->
+        Box(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues),
+                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 100.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
+                // Input Section
+                item {
+                    LinkInputSection(
+                        value = uiState.urlInput,
+                        onValueChange = { viewModel.onUrlInputChange(it) },
+                        onPasteClick = { viewModel.onPasteLink("https://youtu.be/dQw4w9WgXcQ") },
+                        onDownloadClick = { viewModel.onDownloadClick() },
+                        placeholder = "Paste YouTube link here"
+                    )
+                }
+
+                // Video Preview Section
+                item {
+                    VideoPreviewCard(
+                        title = uiState.videoTitle,
+                        creator = uiState.creator,
+                        views = uiState.views,
+                        duration = uiState.duration,
+                        qualityTag = uiState.qualityTag,
+                        thumbnailUrl = uiState.thumbnailUrl
+                    )
+                }
+
+                // Format Selection Header
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "SELECT FORMAT",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.Black,
+                                color = TextSecondary,
+                                letterSpacing = 2.sp
+                            )
+                        )
+                        Text(
+                            text = "High Definition",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                color = PrimaryAccent,
+                                fontWeight = FontWeight.Medium
+                            )
+                        )
+                    }
+                }
+
+                // Format Options
+                items(uiState.formats) { option ->
+                    FormatOptionItem(
+                        option = option,
+                        isSelected = uiState.selectedFormatId == option.id,
+                        onClick = { viewModel.onFormatSelected(option.id) }
+                    )
+                }
+            }
+
+            // Bottom Download Button
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(120.dp)
+                    .padding(horizontal = 20.dp, vertical = 24.dp)
+            ) {
+                Button(
+                    onClick = { viewModel.onDownloadClick() },
+                    modifier = Modifier.fillMaxWidth().height(60.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = PrimaryAccent,
+                        contentColor = Color.Black
+                    ),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 8.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Download,
+                            contentDescription = null
+                        )
+                        Text(
+                            text = "Download Now",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        )
+                    }
+                }
+            }
+        }
+    }
+}

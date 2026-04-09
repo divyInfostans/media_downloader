@@ -23,6 +23,9 @@ import com.downloader.allinone.ui.dashboard.components.*
 import com.downloader.allinone.ui.theme.PrimaryAccent
 import com.downloader.allinone.ui.theme.TextSecondary
 import com.downloader.allinone.viewmodel.DashboardViewModel
+import androidx.compose.ui.platform.LocalContext
+import android.content.Intent
+import com.downloader.allinone.ui.youtube.YouTubeDownloaderActivity
 import androidx.compose.ui.tooling.preview.Preview
 import com.downloader.allinone.ui.theme.DownloaderAllInOneTheme
 
@@ -51,6 +54,7 @@ fun DashboardScreenContent(
     onTabSelected: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
@@ -152,7 +156,10 @@ fun DashboardScreenContent(
                             name = "YouTube",
                             icon = Icons.Default.PlayCircle,
                             iconColor = Color(0xFFFF0000),
-                            onClick = { viewModel?.onServiceClick("YouTube") },
+                            onClick = {
+                                viewModel?.onServiceClick("YouTube")
+                                context.startActivity(Intent(context, YouTubeDownloaderActivity::class.java))
+                            },
                             modifier = Modifier.weight(1f)
                         )
                         ServiceShortcut(
