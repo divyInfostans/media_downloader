@@ -1,0 +1,47 @@
+package com.downloader.allinone.ui.dashboard.components
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.*
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+
+@Composable
+fun DashboardHeader(
+    onSettingsClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 16.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "Curator",
+            style = MaterialTheme.typography.headlineMedium.copy(
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = (-1).sp,
+                color = Color.White
+            )
+        )
+        IconButton(
+            onClick = onSettingsClick,
+            colors = IconButtonDefaults.iconButtonColors(
+                contentColor = Color.White
+            )
+        ) {
+            Icon(
+                imageVector = Icons.Default.Settings,
+                contentDescription = "Settings"
+            )
+        }
+    }
+}
