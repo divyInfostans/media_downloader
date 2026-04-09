@@ -78,15 +78,29 @@ class YtDlpExecutor(private val context: Context) {
         url: String,
         formatId: String,
         outputPath: String,
+        isAudio: Boolean = false,
         onProgress: (Float, String) -> Unit
     ): Boolean = withContext(Dispatchers.IO) {
-        val command = mutableListOf(
-            ytDlpFile.absolutePath,
-            "-f", formatId,
-            "--ffmpeg-location", ffmpegFile.absolutePath,
-            "-o", outputPath,
-            url
-        )
+        val command = if (isAudio) {
+            mutableListOf(
+                ytDlpFile.absolutePath,
+                "-x",
+                "--audio-format", "mp3",
+                "--ffmpeg-location", ffmpegFile.absolutePath,
+                "-o", outputPath,
+                url
+            )
+        } else {
+            mutableListOf(
+                ytDlpFile.absolutePath,
+                "-f", formatId,
+                "--ffmpeg-location", ffmpegFile.absolutePath,
+                "-o", outputPath,
+                url
+            )
+        }
+
+        Log.d(TAG, "Executing download command: ${command.joinToString(" ")}")
 
         try {
             val process = ProcessBuilder(command)
