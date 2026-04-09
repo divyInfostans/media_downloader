@@ -16,6 +16,7 @@ data class FormatOption(
 data class YouTubeUiState(
     val urlInput: String = "",
     val detectedLink: String? = null,
+    val hasVideoInfo: Boolean = false,
     val videoTitle: String = "",
     val creator: String = "",
     val views: String = "",

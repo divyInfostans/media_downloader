@@ -29,17 +29,33 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
     }
 
     fun onPasteLink(link: String) {
-        _uiState.update { it.copy(urlInput = link) }
-        fetchVideoInfo(link)
+        val trimmedLink = link.trim()
+        _uiState.update { it.copy(urlInput = trimmedLink) }
+        fetchVideoInfo(trimmedLink)
     }
 
     fun fetchVideoInfo(url: String) {
-        if (url.isBlank()) return
+        val trimmedUrl = url.trim()
+        if (trimmedUrl.isBlank()) return
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            // Reset state before fetching
+            _uiState.update {
+                it.copy(
+                    isLoading = true,
+                    errorMessage = null,
+                    hasVideoInfo = false,
+                    videoTitle = "",
+                    creator = "",
+                    views = "",
+                    duration = "",
+                    thumbnailUrl = "",
+                    formats = emptyList(),
+                    selectedFormatId = null
+                )
+            }
 
-            val info = executor.getVideoInfo(url)
+            val info = executor.getVideoInfo(trimmedUrl)
             if (info != null) {
                 // Parse formats
                 val formatsArray = info["formats"]?.jsonArray ?: emptyList()
@@ -67,6 +83,7 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
 
                 _uiState.update {
                     it.copy(
+                        hasVideoInfo = true,
                         videoTitle = info["title"]?.jsonPrimitive?.content ?: "",
                         creator = info["uploader"]?.jsonPrimitive?.content ?: "",
                         views = info["view_count"]?.jsonPrimitive?.content ?: "",

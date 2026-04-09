@@ -41,24 +41,35 @@ class YtDlpExecutor(private val context: Context) {
             ytDlpFile.absolutePath,
             "-J",
             "--no-playlist",
-            url
+            url.trim()
         )
+
+        Log.d(TAG, "Executing command: ${command.joinToString(" ")}")
 
         try {
             val process = ProcessBuilder(command)
-                .redirectErrorStream(true)
                 .start()
 
             val output = process.inputStream.bufferedReader().use { it.readText() }
+            val error = process.errorStream.bufferedReader().use { it.readText() }
             process.waitFor()
 
+            Log.d(TAG, "yt-dlp raw output: $output")
+            if (error.isNotEmpty()) {
+                Log.e(TAG, "yt-dlp stderr: $error")
+            }
+
             if (process.exitValue() == 0) {
-                return@withContext Json.parseToJsonElement(output).jsonObject
+                return@withContext runCatching {
+                    Json.parseToJsonElement(output).jsonObject
+                }.onFailure {
+                    Log.e(TAG, "Failed to parse JSON output", it)
+                }.getOrNull()
             } else {
-                Log.e(TAG, "yt-dlp failed with exit code ${process.exitValue()}: $output")
+                Log.e(TAG, "yt-dlp failed with exit code ${process.exitValue()}")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to run yt-dlp", e)
+            Log.e(TAG, "Exception during yt-dlp execution", e)
         }
         null
     }

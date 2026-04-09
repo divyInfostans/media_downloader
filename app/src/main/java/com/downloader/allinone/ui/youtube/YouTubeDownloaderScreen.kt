@@ -89,50 +89,53 @@ fun YouTubeDownloaderScreen(
                     )
                 }
 
-                // Video Preview Section
-                item {
-                    VideoPreviewCard(
-                        title = uiState.videoTitle,
-                        creator = uiState.creator,
-                        views = uiState.views,
-                        duration = uiState.duration,
-                        qualityTag = uiState.qualityTag,
-                        thumbnailUrl = uiState.thumbnailUrl
-                    )
-                }
-
-                // Format Selection Header
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "SELECT FORMAT",
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontWeight = FontWeight.Black,
-                                color = TextSecondary,
-                                letterSpacing = 2.sp
-                            )
-                        )
-                        Text(
-                            text = "High Definition",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                color = PrimaryAccent,
-                                fontWeight = FontWeight.Medium
-                            )
+                // Video Content (Preview and Formats) - Only show if info is available
+                if (uiState.hasVideoInfo && !uiState.isLoading) {
+                    // Video Preview Section
+                    item {
+                        VideoPreviewCard(
+                            title = uiState.videoTitle,
+                            creator = uiState.creator,
+                            views = uiState.views,
+                            duration = uiState.duration,
+                            qualityTag = uiState.qualityTag,
+                            thumbnailUrl = uiState.thumbnailUrl
                         )
                     }
-                }
 
-                // Format Options
-                items(uiState.formats) { option ->
-                    FormatOptionItem(
-                        option = option,
-                        isSelected = uiState.selectedFormatId == option.id,
-                        onClick = { viewModel.onFormatSelected(option.id) }
-                    )
+                    // Format Selection Header
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "SELECT FORMAT",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Black,
+                                    color = TextSecondary,
+                                    letterSpacing = 2.sp
+                                )
+                            )
+                            Text(
+                                text = "High Definition",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    color = PrimaryAccent,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            )
+                        }
+                    }
+
+                    // Format Options
+                    items(uiState.formats) { option ->
+                        FormatOptionItem(
+                            option = option,
+                            isSelected = uiState.selectedFormatId == option.id,
+                            onClick = { viewModel.onFormatSelected(option.id) }
+                        )
+                    }
                 }
 
                 // Download Progress
@@ -190,18 +193,19 @@ fun YouTubeDownloaderScreen(
                 }
             }
 
-            // Bottom Download Button
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(120.dp)
-                    .padding(horizontal = 20.dp, vertical = 24.dp)
-            ) {
-                Button(
-                    onClick = { viewModel.onDownloadClick() },
-                    enabled = !uiState.isDownloading && uiState.selectedFormatId != null,
-                    modifier = Modifier.fillMaxWidth().height(60.dp),
+            // Bottom Download Button - Only show if info is available
+            if (uiState.hasVideoInfo && !uiState.isLoading) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(120.dp)
+                        .padding(horizontal = 20.dp, vertical = 24.dp)
+                ) {
+                    Button(
+                        onClick = { viewModel.onDownloadClick() },
+                        enabled = !uiState.isDownloading && uiState.selectedFormatId != null,
+                        modifier = Modifier.fillMaxWidth().height(60.dp),
                     shape = RoundedCornerShape(20.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = PrimaryAccent,
@@ -223,6 +227,7 @@ fun YouTubeDownloaderScreen(
                                 fontWeight = FontWeight.ExtraBold
                             )
                         )
+                    }
                     }
                 }
             }
