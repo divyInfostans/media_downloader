@@ -25,13 +25,13 @@ fun DownloadItem(
 ) {
     Surface(
         modifier = modifier
-            .width(300.dp)
-            .padding(end = 12.dp),
+            .width(260.dp) // Reduced width
+            .padding(end = 8.dp),
         color = MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(24.dp)
+        shape = RoundedCornerShape(16.dp) // Updated to 16dp
     ) {
         Column(
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier.padding(12.dp) // Reduced padding
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically
@@ -39,17 +39,17 @@ fun DownloadItem(
                 // Mock thumbnail placeholder
                 Box(
                     modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .size(40.dp) // Reduced size
+                        .clip(RoundedCornerShape(8.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant)
                 )
 
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(10.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = task.fileName,
-                        style = MaterialTheme.typography.bodySmall.copy(
+                        style = MaterialTheme.typography.labelMedium.copy(
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         ),
@@ -64,28 +64,30 @@ fun DownloadItem(
                             text = task.sizeInfo,
                             style = MaterialTheme.typography.labelSmall.copy(
                                 color = TextSecondary.copy(alpha = 0.4f),
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 9.sp
                             )
                         )
                         Text(
                             text = "${(task.progress * 100).toInt()}%",
                             style = MaterialTheme.typography.labelSmall.copy(
                                 color = PrimaryAccent,
-                                fontWeight = FontWeight.ExtraBold
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 9.sp
                             )
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Progress Bar
             LinearProgressIndicator(
                 progress = { task.progress },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(6.dp)
+                    .height(4.dp) // Reduced height
                     .clip(RoundedCornerShape(percent = 50)),
                 color = PrimaryAccent,
                 trackColor = Color(0xFF0C0E12)

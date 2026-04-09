@@ -13,7 +13,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.downloader.allinone.ui.theme.SurfaceColor
 
 @Composable
 fun ServiceShortcut(
@@ -25,10 +24,10 @@ fun ServiceShortcut(
 ) {
     Surface(
         modifier = modifier
-            .height(140.dp)
+            .height(100.dp) // Reduced height
             .clickable { onClick() },
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        shape = RoundedCornerShape(24.dp)
+        shape = RoundedCornerShape(16.dp) // Updated to 16dp
     ) {
         Column(
             modifier = Modifier.fillMaxSize(),
@@ -37,24 +36,24 @@ fun ServiceShortcut(
         ) {
             Box(
                 modifier = Modifier
-                    .size(56.dp)
-                    .background(iconColor.copy(alpha = 0.1f), RoundedCornerShape(16.dp)),
+                    .size(44.dp) // Reduced size
+                    .background(iconColor.copy(alpha = 0.1f), RoundedCornerShape(12.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = name,
                     tint = iconColor,
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(24.dp) // Reduced size
                 )
             }
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = name,
-                style = MaterialTheme.typography.labelLarge.copy(
+                style = MaterialTheme.typography.labelMedium.copy(
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
-                    letterSpacing = (-0.5).sp
+                    letterSpacing = (-0.2).sp
                 )
             )
         }

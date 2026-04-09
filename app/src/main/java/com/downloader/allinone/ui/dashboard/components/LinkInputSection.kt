@@ -11,12 +11,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.downloader.allinone.ui.theme.PrimaryAccent
-import com.downloader.allinone.ui.theme.SurfaceColor
 import com.downloader.allinone.ui.theme.TextSecondary
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -31,14 +29,16 @@ fun LinkInputSection(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(color = Color(0xFF0C0E12), shape = RoundedCornerShape(24.dp))
+            .background(color = Color(0xFF0C0E12), shape = RoundedCornerShape(16.dp))
             .padding(4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             imageVector = Icons.Default.Link,
             contentDescription = null,
-            modifier = Modifier.padding(start = 16.dp),
+            modifier = Modifier
+                .padding(start = 12.dp)
+                .size(18.dp),
             tint = TextSecondary.copy(alpha = 0.5f)
         )
 
@@ -49,7 +49,8 @@ fun LinkInputSection(
                 Text(
                     "https://...",
                     color = TextSecondary.copy(alpha = 0.3f),
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 14.sp
                 )
             },
             modifier = Modifier.weight(1f),
@@ -62,16 +63,20 @@ fun LinkInputSection(
                 focusedTextColor = Color.White,
                 unfocusedTextColor = Color.White
             ),
-            singleLine = true
+            singleLine = true,
+            textStyle = LocalTextStyle.current.copy(fontSize = 14.sp)
         )
 
-        TextButton(onClick = onPasteClick) {
+        TextButton(
+            onClick = onPasteClick,
+            modifier = Modifier.padding(horizontal = 4.dp)
+        ) {
             Text(
                 "PASTE",
                 color = PrimaryAccent,
-                style = MaterialTheme.typography.labelLarge.copy(
+                style = MaterialTheme.typography.labelMedium.copy(
                     fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp
+                    letterSpacing = 0.5.sp
                 )
             )
         }
@@ -79,13 +84,14 @@ fun LinkInputSection(
         IconButton(
             onClick = onDownloadClick,
             modifier = Modifier
-                .size(48.dp)
-                .background(PrimaryAccent, RoundedCornerShape(16.dp))
+                .size(40.dp)
+                .background(PrimaryAccent, RoundedCornerShape(12.dp))
         ) {
             Icon(
                 imageVector = Icons.Default.Download,
                 contentDescription = "Download",
-                tint = Color.Black
+                tint = Color.Black,
+                modifier = Modifier.size(20.dp)
             )
         }
     }

@@ -20,13 +20,13 @@ fun DashboardHeader(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 16.dp),
+            .padding(horizontal = 24.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = "Curator",
-            style = MaterialTheme.typography.headlineMedium.copy(
+            style = MaterialTheme.typography.titleLarge.copy(
                 fontWeight = FontWeight.ExtraBold,
                 letterSpacing = (-1).sp,
                 color = Color.White
@@ -34,13 +34,15 @@ fun DashboardHeader(
         )
         IconButton(
             onClick = onSettingsClick,
+            modifier = Modifier.size(40.dp),
             colors = IconButtonDefaults.iconButtonColors(
                 contentColor = Color.White
             )
         ) {
             Icon(
                 imageVector = Icons.Default.Settings,
-                contentDescription = "Settings"
+                contentDescription = "Settings",
+                modifier = Modifier.size(20.dp)
             )
         }
     }

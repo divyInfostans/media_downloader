@@ -1,6 +1,5 @@
 package com.downloader.allinone.ui.dashboard
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -13,9 +12,7 @@ import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -35,19 +32,38 @@ fun DashboardScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    DashboardScreenContent(uiState, viewModel, modifier)
+    var selectedTab by remember { mutableStateOf("Home") }
+
+    DashboardScreenContent(
+        uiState = uiState,
+        viewModel = viewModel,
+        selectedTab = selectedTab,
+        onTabSelected = { selectedTab = it },
+        modifier = modifier
+    )
 }
 
 @Composable
 fun DashboardScreenContent(
     uiState: com.downloader.allinone.viewmodel.DashboardUiState,
     viewModel: DashboardViewModel?,
+    selectedTab: String = "Home",
+    onTabSelected: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
-            DashboardHeader(onSettingsClick = { /* Handle settings */ })
+            DashboardHeader(
+                onSettingsClick = { /* Handle settings */ },
+                modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars)
+            )
+        },
+        bottomBar = {
+            DashboardBottomBar(
+                selectedTab = selectedTab,
+                onTabSelected = onTabSelected
+            )
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
@@ -55,23 +71,23 @@ fun DashboardScreenContent(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues),
-            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(32.dp)
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             // Hero Section
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
                         text = "Ready to collect?",
-                        style = MaterialTheme.typography.headlineLarge.copy(
+                        style = MaterialTheme.typography.headlineSmall.copy(
                             fontWeight = FontWeight.ExtraBold,
                             color = Color.White,
-                            letterSpacing = (-1).sp
+                            letterSpacing = (-0.5).sp
                         )
                     )
                     Text(
                         text = "Paste a link below to start your high-speed download.",
-                        style = MaterialTheme.typography.bodyMedium.copy(
+                        style = MaterialTheme.typography.bodySmall.copy(
                             color = TextSecondary.copy(alpha = 0.6f),
                             fontWeight = FontWeight.Medium
                         )
@@ -81,7 +97,7 @@ fun DashboardScreenContent(
 
             // Input Section
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     LinkInputSection(
                         value = uiState.urlInput,
                         onValueChange = { viewModel?.onUrlInputChange(it) },
@@ -101,21 +117,22 @@ fun DashboardScreenContent(
                             )
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Link,
                                     contentDescription = null,
-                                    modifier = Modifier.size(14.dp),
+                                    modifier = Modifier.size(12.dp),
                                     tint = Color(0xFF00A2F4)
                                 )
                                 Text(
                                     text = "Detected link: $link",
-                                    style = MaterialTheme.typography.labelMedium.copy(
+                                    style = MaterialTheme.typography.labelSmall.copy(
                                         color = Color(0xFF00A2F4),
-                                        fontWeight = FontWeight.Medium
+                                        fontWeight = FontWeight.Medium,
+                                        fontSize = 10.sp
                                     )
                                 )
                             }
@@ -126,10 +143,10 @@ fun DashboardScreenContent(
 
             // Service Shortcuts Grid
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         ServiceShortcut(
                             name = "YouTube",
@@ -148,7 +165,7 @@ fun DashboardScreenContent(
                     }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         ServiceShortcut(
                             name = "WhatsApp",
@@ -171,7 +188,7 @@ fun DashboardScreenContent(
             // Active Downloads Section
             if (uiState.activeDownloads.isNotEmpty()) {
                 item {
-                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -179,7 +196,7 @@ fun DashboardScreenContent(
                         ) {
                             Text(
                                 text = "Active Downloads",
-                                style = MaterialTheme.typography.titleLarge.copy(
+                                style = MaterialTheme.typography.titleMedium.copy(
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
                                 )
@@ -190,19 +207,20 @@ fun DashboardScreenContent(
                             ) {
                                 Text(
                                     text = "${uiState.activeDownloads.size} TASKS",
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp),
                                     style = MaterialTheme.typography.labelSmall.copy(
                                         color = PrimaryAccent,
                                         fontWeight = FontWeight.Bold,
-                                        letterSpacing = 1.sp
+                                        letterSpacing = 0.5.sp,
+                                        fontSize = 9.sp
                                     )
                                 )
                             }
                         }
 
                         LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            contentPadding = PaddingValues(end = 24.dp)
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            contentPadding = PaddingValues(end = 20.dp)
                         ) {
                             items(uiState.activeDownloads) { task ->
                                 DownloadItem(
