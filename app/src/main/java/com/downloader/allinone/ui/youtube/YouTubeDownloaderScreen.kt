@@ -1,9 +1,11 @@
 package com.downloader.allinone.ui.youtube
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Download
@@ -23,6 +25,8 @@ import com.downloader.allinone.ui.youtube.components.FormatOptionItem
 import com.downloader.allinone.ui.youtube.components.VideoPreviewCard
 import com.downloader.allinone.viewmodel.YouTubeDownloaderViewModel
 
+import androidx.compose.ui.platform.LocalClipboardManager
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun YouTubeDownloaderScreen(
@@ -31,6 +35,7 @@ fun YouTubeDownloaderScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val clipboardManager = LocalClipboardManager.current
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -76,7 +81,9 @@ fun YouTubeDownloaderScreen(
                     LinkInputSection(
                         value = uiState.urlInput,
                         onValueChange = { viewModel.onUrlInputChange(it) },
-                        onPasteClick = { viewModel.onPasteLink("https://youtu.be/dQw4w9WgXcQ") },
+                        onPasteClick = {
+                            clipboardManager.getText()?.text?.let { viewModel.onPasteLink(it) }
+                        },
                         onDownloadClick = { viewModel.onDownloadClick() },
                         placeholder = "Paste YouTube link here"
                     )
@@ -127,6 +134,60 @@ fun YouTubeDownloaderScreen(
                         onClick = { viewModel.onFormatSelected(option.id) }
                     )
                 }
+
+                // Download Progress
+                if (uiState.isDownloading) {
+                    item {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Downloading... ${uiState.downloadSpeed}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = PrimaryAccent
+                                )
+                                Text(
+                                    text = "${(uiState.downloadProgress * 100).toInt()}%",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                    color = PrimaryAccent
+                                )
+                            }
+                            LinearProgressIndicator(
+                                progress = uiState.downloadProgress,
+                                modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
+                                color = PrimaryAccent,
+                                trackColor = Color(0xFF1E2024)
+                            )
+                        }
+                    }
+                }
+
+                // Error Message
+                uiState.errorMessage?.let { error ->
+                    item {
+                        Text(
+                            text = error,
+                            color = Color.Red,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                }
+            }
+
+            // Loading Overlay
+            if (uiState.isLoading) {
+                Box(
+                    modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = PrimaryAccent)
+                }
             }
 
             // Bottom Download Button
@@ -139,6 +200,7 @@ fun YouTubeDownloaderScreen(
             ) {
                 Button(
                     onClick = { viewModel.onDownloadClick() },
+                    enabled = !uiState.isDownloading && uiState.selectedFormatId != null,
                     modifier = Modifier.fillMaxWidth().height(60.dp),
                     shape = RoundedCornerShape(20.dp),
                     colors = ButtonDefaults.buttonColors(

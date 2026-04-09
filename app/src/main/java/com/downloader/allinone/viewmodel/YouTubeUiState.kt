@@ -8,7 +8,9 @@ data class FormatOption(
     val id: String,
     val title: String,
     val subtitle: String,
-    val type: FormatType
+    val type: FormatType,
+    val ext: String = "mp4",
+    val filesize: Long = 0
 )
 
 data class YouTubeUiState(
@@ -22,5 +24,9 @@ data class YouTubeUiState(
     val thumbnailUrl: String = "",
     val formats: List<FormatOption> = emptyList(),
     val selectedFormatId: String? = null,
-    val isLoading: Boolean = false
+    val isLoading: Boolean = false,
+    val isDownloading: Boolean = false,
+    val downloadProgress: Float = 0f,
+    val downloadSpeed: String = "",
+    val errorMessage: String? = null
 )

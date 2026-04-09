@@ -23,7 +23,9 @@ import com.downloader.allinone.ui.dashboard.components.*
 import com.downloader.allinone.ui.theme.PrimaryAccent
 import com.downloader.allinone.ui.theme.TextSecondary
 import com.downloader.allinone.viewmodel.DashboardViewModel
+import com.downloader.allinone.viewmodel.DashboardUiState
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
 import android.content.Intent
 import com.downloader.allinone.ui.youtube.YouTubeDownloaderActivity
 import androidx.compose.ui.tooling.preview.Preview
@@ -48,13 +50,14 @@ fun DashboardScreen(
 
 @Composable
 fun DashboardScreenContent(
-    uiState: com.downloader.allinone.viewmodel.DashboardUiState,
+    uiState: DashboardUiState,
     viewModel: DashboardViewModel?,
     selectedTab: String = "Home",
     onTabSelected: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
@@ -105,7 +108,9 @@ fun DashboardScreenContent(
                     LinkInputSection(
                         value = uiState.urlInput,
                         onValueChange = { viewModel?.onUrlInputChange(it) },
-                        onPasteClick = { viewModel?.onPasteLink("https://example.com/video") }, // Mock paste
+                        onPasteClick = {
+                            clipboardManager.getText()?.text?.let { viewModel?.onPasteLink(it) }
+                        },
                         onDownloadClick = { viewModel?.onDownloadStart() }
                     )
 
@@ -248,7 +253,7 @@ fun DashboardScreenContent(
 fun DashboardScreenPreview() {
     DownloaderAllInOneTheme {
         DashboardScreenContent(
-            uiState = com.downloader.allinone.viewmodel.DashboardUiState(
+            uiState = DashboardUiState(
                 activeDownloads = listOf(
                     com.downloader.allinone.model.DownloadTask(
                         id = "1",

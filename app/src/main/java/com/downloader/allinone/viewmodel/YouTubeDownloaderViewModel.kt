@@ -1,37 +1,26 @@
 package com.downloader.allinone.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.downloader.allinone.utils.YtDlpExecutor
+import kotlinx.serialization.json.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import java.io.File
 
-class YouTubeDownloaderViewModel : ViewModel() {
+class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(YouTubeUiState())
     val uiState: StateFlow<YouTubeUiState> = _uiState.asStateFlow()
 
-    init {
-        loadMockData()
-    }
+    private val executor = YtDlpExecutor(application)
 
-    private fun loadMockData() {
-        _uiState.update {
-            it.copy(
-                urlInput = "https://youtu.be/dQw4w9WgXcQ",
-                detectedLink = "youtu.be/dQw4w9WgXcQ",
-                videoTitle = "Cinematic Journey through Tokyo | 4K HDR",
-                creator = "Tokyo Visuals",
-                views = "2.4M views",
-                duration = "12:45",
-                qualityTag = "4K",
-                thumbnailUrl = "https://lh3.googleusercontent.com/aida-public/AB6AXuCdRm4If3pVOQ5z7IY2ujMWuD9pCl1eyTKHblh8Q0ittv8Lp-LRM_IodoxeD2FC8jlBQrVWupYwXGWJHny7sIQTVNi47iin08Gqk0yN8x_WhOw7WDoEBiyOFNJ0lEsWWsmbvWAZZ_rLzEp5Fq3SlnrJIZS4DPSMf8GAgIPyhkun5CPYJdlri12NQfiZRIHymJQRxGz9HKei67mYAdB6b6dbBUv7rXVXV_NwTxsC8ggBYC-eSGZTd5IoKy9fgWMMfb_f5MoLIXBzg-xk",
-                formats = listOf(
-                    FormatOption("1", "1080p MP4 VIDEO", "approx. 142.5 MB", FormatType.VIDEO),
-                    FormatOption("2", "720p MP4 VIDEO", "approx. 84.2 MB", FormatType.VIDEO),
-                    FormatOption("3", "Audio MP3 320KBPS", "approx. 18.1 MB", FormatType.AUDIO)
-                ),
-                selectedFormatId = "1"
-            )
+    init {
+        viewModelScope.launch {
+            executor.initBinaries()
         }
     }
 
@@ -41,6 +30,57 @@ class YouTubeDownloaderViewModel : ViewModel() {
 
     fun onPasteLink(link: String) {
         _uiState.update { it.copy(urlInput = link) }
+        fetchVideoInfo(link)
+    }
+
+    fun fetchVideoInfo(url: String) {
+        if (url.isBlank()) return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+
+            val info = executor.getVideoInfo(url)
+            if (info != null) {
+                // Parse formats
+                val formatsArray = info["formats"]?.jsonArray ?: emptyList()
+                val parsedFormats = formatsArray.mapNotNull { element ->
+                    val obj = element.jsonObject
+                    val formatId = obj["format_id"]?.jsonPrimitive?.content ?: return@mapNotNull null
+                    val ext = obj["ext"]?.jsonPrimitive?.content ?: "mp4"
+                    val note = obj["format_note"]?.jsonPrimitive?.content ?: ""
+                    val vcodec = obj["vcodec"]?.jsonPrimitive?.content
+                    val acodec = obj["acodec"]?.jsonPrimitive?.content
+
+                    val type = if (vcodec != "none") FormatType.VIDEO else FormatType.AUDIO
+
+                    // Simple filtering: keep progressive or specific ones
+                    if (vcodec != "none" || acodec != "none") {
+                        FormatOption(
+                            id = formatId,
+                            title = if (type == FormatType.VIDEO) "$note ($ext)" else "Audio MP3",
+                            subtitle = "Format ID: $formatId",
+                            type = type,
+                            ext = ext
+                        )
+                    } else null
+                }.distinctBy { it.title }
+
+                _uiState.update {
+                    it.copy(
+                        videoTitle = info["title"]?.jsonPrimitive?.content ?: "",
+                        creator = info["uploader"]?.jsonPrimitive?.content ?: "",
+                        views = info["view_count"]?.jsonPrimitive?.content ?: "",
+                        duration = info["duration_string"]?.jsonPrimitive?.content ?: "",
+                        thumbnailUrl = info["thumbnail"]?.jsonPrimitive?.content ?: "",
+                        formats = parsedFormats,
+                        selectedFormatId = parsedFormats.firstOrNull()?.id,
+                        isLoading = false
+                    )
+                }
+            } else {
+                _uiState.update { it.copy(isLoading = false, errorMessage = "Failed to fetch video info") }
+            }
+        }
     }
 
     fun onFormatSelected(formatId: String) {
@@ -48,6 +88,34 @@ class YouTubeDownloaderViewModel : ViewModel() {
     }
 
     fun onDownloadClick() {
-        // Implement later
+        val state = _uiState.value
+        val url = state.urlInput
+        val formatId = state.selectedFormatId
+
+        if (url.isBlank() || formatId == null || state.isDownloading) return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isDownloading = true, downloadProgress = 0f, errorMessage = null) }
+
+            val downloadDir = File(getApplication<Application>().getExternalFilesDir(null), "Downloads/YouTube")
+            if (!downloadDir.exists()) downloadDir.mkdirs()
+
+            val cleanTitle = state.videoTitle.replace("[\\\\/:*?\"<>|]".toRegex(), "_")
+            val outputPath = File(downloadDir, "$cleanTitle.%(ext)s").absolutePath
+
+            val success = executor.download(url, formatId, outputPath) { progress, speed ->
+                updateDownloadProgress(progress, speed)
+            }
+
+            if (!success) {
+                _uiState.update { it.copy(errorMessage = "Download failed") }
+            }
+
+            _uiState.update { it.copy(isDownloading = false) }
+        }
+    }
+
+    private fun updateDownloadProgress(progress: Float, speed: String) {
+        _uiState.update { it.copy(downloadProgress = progress, downloadSpeed = speed) }
     }
 }
