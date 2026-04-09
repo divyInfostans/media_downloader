@@ -20,15 +20,34 @@ class YtDlpExecutor(private val context: Context) {
         copyAssetToInternal("yt-dlp", ytDlpFile)
         copyAssetToInternal("ffmpeg", ffmpegFile)
 
-        ytDlpFile.setExecutable(true)
-        ffmpegFile.setExecutable(true)
+        ensureExecutable(ytDlpFile)
+        ensureExecutable(ffmpegFile)
+    }
+
+    private fun ensureExecutable(file: File) {
+        try {
+            file.apply {
+                setExecutable(true, false)
+                setReadable(true, false)
+                setWritable(true, false)
+            }
+            // Also run explicit chmod command for extra reliability
+            ProcessBuilder("chmod", "755", file.absolutePath).start().waitFor()
+
+            Log.d(TAG, "Binary status: ${file.name} | Path: ${file.absolutePath} | Exists: ${file.exists()} | canExecute: ${file.canExecute()}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to set executable permissions for ${file.name}", e)
+        }
     }
 
     private fun copyAssetToInternal(assetName: String, targetFile: File) {
         try {
-            context.assets.open(assetName).use { input ->
-                FileOutputStream(targetFile).use { output ->
-                    input.copyTo(output)
+            // Only copy if it doesn't exist to save time/resource
+            if (!targetFile.exists()) {
+                context.assets.open(assetName).use { input ->
+                    FileOutputStream(targetFile).use { output ->
+                        input.copyTo(output)
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -47,8 +66,20 @@ class YtDlpExecutor(private val context: Context) {
         Log.d(TAG, "Executing command: ${command.joinToString(" ")}")
 
         try {
-            val process = ProcessBuilder(command)
-                .start()
+            if (!ytDlpFile.canExecute()) {
+                Log.w(TAG, "yt-dlp not executable, retrying chmod...")
+                ensureExecutable(ytDlpFile)
+            }
+
+            val process = try {
+                ProcessBuilder(command).start()
+            } catch (e: java.io.IOException) {
+                if (e.message?.contains("Permission denied") == true) {
+                    Log.w(TAG, "Permission denied, one last chmod retry...")
+                    ensureExecutable(ytDlpFile)
+                    ProcessBuilder(command).start()
+                } else throw e
+            }
 
             val output = process.inputStream.bufferedReader().use { it.readText() }
             val error = process.errorStream.bufferedReader().use { it.readText() }
@@ -103,9 +134,20 @@ class YtDlpExecutor(private val context: Context) {
         Log.d(TAG, "Executing download command: ${command.joinToString(" ")}")
 
         try {
-            val process = ProcessBuilder(command)
-                .redirectErrorStream(true)
-                .start()
+            if (!ytDlpFile.canExecute()) {
+                Log.w(TAG, "yt-dlp not executable, retrying chmod...")
+                ensureExecutable(ytDlpFile)
+            }
+
+            val process = try {
+                ProcessBuilder(command).redirectErrorStream(true).start()
+            } catch (e: java.io.IOException) {
+                if (e.message?.contains("Permission denied") == true) {
+                    Log.w(TAG, "Permission denied, one last chmod retry...")
+                    ensureExecutable(ytDlpFile)
+                    ProcessBuilder(command).redirectErrorStream(true).start()
+                } else throw e
+            }
 
             process.inputStream.bufferedReader().use { reader ->
                 var line: String?
