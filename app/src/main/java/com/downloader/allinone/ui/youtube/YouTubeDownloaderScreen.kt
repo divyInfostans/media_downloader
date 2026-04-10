@@ -258,8 +258,14 @@ fun YouTubeDownloaderScreen(
                             imageVector = Icons.Default.Download,
                             contentDescription = null
                         )
+                        val buttonText = when {
+                            uiState.isDownloading -> "Downloading... ${(uiState.downloadProgress * 100).toInt()}%"
+                            uiState.successMessage != null -> "Downloaded"
+                            uiState.errorMessage != null -> "Retry Download"
+                            else -> "Download Now"
+                        }
                         Text(
-                            text = "Download Now",
+                            text = buttonText,
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.ExtraBold
                             )

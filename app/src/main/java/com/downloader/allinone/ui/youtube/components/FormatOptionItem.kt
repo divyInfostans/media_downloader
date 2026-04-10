@@ -37,6 +37,7 @@ fun FormatOptionItem(
         FormatType.AUDIO -> "Audio only"
     }
 
+    val sizeLabel = if (option.type == FormatType.AUDIO) "Est. size" else "Size"
     val sizeMb = if (option.filesize > 0) String.format("%.1f MB", option.filesize / (1024f * 1024f)) else "Unknown size"
 
     Surface(
@@ -83,7 +84,7 @@ fun FormatOptionItem(
                     )
                 )
                 Text(
-                    text = "$typeLabel • $sizeMb • ${option.ext}",
+                    text = "$typeLabel • $sizeLabel: $sizeMb • ${option.ext}",
                     style = MaterialTheme.typography.labelSmall.copy(
                         color = TextSecondary,
                         fontWeight = FontWeight.Medium

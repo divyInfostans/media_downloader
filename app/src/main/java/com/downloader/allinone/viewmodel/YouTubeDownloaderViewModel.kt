@@ -179,6 +179,9 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
 
                 val selectedFormat = state.formats.find { it.id == formatId }
                 val isAudio = selectedFormat?.type == FormatType.AUDIO
+                val resolution = selectedFormat?.title ?: "N/A"
+
+                Log.d(TAG, "Download Triggered - ID: $formatId, Type: ${if(isAudio) "Audio" else "Video"}, Res: $resolution")
 
                 val callback = object {
                     @Suppress("unused")

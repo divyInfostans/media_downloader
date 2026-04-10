@@ -103,13 +103,13 @@ def download_video(url, format_id, output_path, is_audio, progress_callback):
 
     download_format = format_id
     if not is_audio:
-        if ffmpeg_available:
-            download_format = f"{format_id}+bestaudio/best"
-        else:
-            # If ffmpeg is missing, we must use a progressive format.
-            # We try to find the best progressive format that matches or is close to the resolution.
-            # But the simplest fallback is 'best' which is usually progressive if no merging allowed.
-            download_format = "best"
+        # Strictly use selected format_id and merge with best audio
+        download_format = f"{format_id}+bestaudio/best"
+        if not ffmpeg_available:
+            # If ffmpeg is missing and we try to merge, it will fail.
+            # We must warn or handle it. User wants high quality to work.
+            # But without ffmpeg merging is impossible for DASH.
+            pass
 
     ydl_opts = {
         "format": download_format,
@@ -132,5 +132,5 @@ def download_video(url, format_id, output_path, is_audio, progress_callback):
     except Exception as e:
         error_msg = str(e)
         if "ffmpeg" in error_msg.lower():
-             error_msg = "FFmpeg is not installed on this device. High quality merging is not supported. Please provide FFmpeg binary in assets."
+             error_msg = "FFmpeg is not installed on this device. High quality merging (1080p+) requires FFmpeg. Please provide binary in assets or select a progressive format (if any)."
         return json.dumps({"status": "error", "error": error_msg})
