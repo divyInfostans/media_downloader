@@ -7,6 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.VideoFile
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -16,7 +17,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.downloader.allinone.ui.theme.PrimaryAccent
-import com.downloader.allinone.ui.theme.SurfaceColor
 import com.downloader.allinone.ui.theme.TextSecondary
 import com.downloader.allinone.viewmodel.FormatOption
 import com.downloader.allinone.viewmodel.FormatType
@@ -30,6 +30,14 @@ fun FormatOptionItem(
 ) {
     val backgroundColor = if (isSelected) Color(0xFF333539) else Color(0xFF1A1C20)
     val borderColor = if (isSelected) PrimaryAccent else Color.Transparent
+
+    val typeLabel = when (option.type) {
+        FormatType.VIDEO -> "Video + Audio"
+        FormatType.VIDEO_ONLY -> "Video only"
+        FormatType.AUDIO -> "Audio only"
+    }
+
+    val sizeMb = if (option.filesize > 0) String.format("%.1f MB", option.filesize / (1024f * 1024f)) else "Unknown size"
 
     Surface(
         onClick = onClick,
@@ -53,7 +61,11 @@ fun FormatOptionItem(
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        imageVector = if (option.type == FormatType.VIDEO) Icons.Default.Movie else Icons.Default.Audiotrack,
+                        imageVector = when(option.type) {
+                            FormatType.VIDEO -> Icons.Default.Movie
+                            FormatType.VIDEO_ONLY -> Icons.Default.VideoFile
+                            FormatType.AUDIO -> Icons.Default.Audiotrack
+                        },
                         contentDescription = null,
                         tint = if (isSelected) PrimaryAccent else TextSecondary,
                         modifier = Modifier.size(24.dp)
@@ -71,7 +83,7 @@ fun FormatOptionItem(
                     )
                 )
                 Text(
-                    text = option.subtitle,
+                    text = "$typeLabel • $sizeMb • ${option.ext}",
                     style = MaterialTheme.typography.labelSmall.copy(
                         color = TextSecondary,
                         fontWeight = FontWeight.Medium

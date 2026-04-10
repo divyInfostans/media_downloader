@@ -3,73 +3,40 @@ import json
 
 def get_video_info(url):
     ydl_opts = {
-        'skip_download': True,
-        'quiet': True,
-        'no_warnings': True,
+        "quiet": True,
+        "no_warnings": True
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            # Filter and simplify info for Kotlin
-            simplified_info = {
-                'title': info.get('title', 'Unknown Title'),
-                'thumbnail': info.get('thumbnail', ''),
-                'duration_string': info.get('duration_string', '0:00'),
-                'uploader': info.get('uploader', 'Unknown Creator'),
-                'view_count': str(info.get('view_count', 0)),
-                'formats': []
-            }
 
-            raw_formats = info.get('formats', [])
+            formats = []
+            for f in info.get("formats", []):
+                # We want formats with filesize if possible, but DASH formats might not always have it
+                # before download. However, we'll try to include all relevant ones.
 
-            # Filter for progressive formats (video + audio) or audio-only
-            filtered_formats = []
-            for f in raw_formats:
-                vcodec = f.get('vcodec', 'none')
-                acodec = f.get('acodec', 'none')
-                ext = f.get('ext', '')
+                vcodec = f.get("vcodec")
+                acodec = f.get("acodec")
 
-                is_video = vcodec != 'none' and acodec != 'none'
-                is_audio = vcodec == 'none' and acodec != 'none'
+                formats.append({
+                    "format_id": f.get("format_id"),
+                    "ext": f.get("ext"),
+                    "resolution": f.get("resolution") or f"{f.get('height')}p" if f.get('height') else "audio",
+                    "filesize": f.get("filesize") or 0,
+                    "vcodec": vcodec,
+                    "acodec": acodec
+                })
 
-                if (is_video and ext == 'mp4') or (is_audio and ext in ['m4a', 'mp3']):
-                    f['is_video_type'] = is_video
-                    filtered_formats.append(f)
-
-            # Sort video formats by height (descending)
-            video_formats = [f for f in filtered_formats if f['is_video_type']]
-            video_formats.sort(key=lambda x: x.get('height', 0) or 0, reverse=True)
-
-            audio_formats = [f for f in filtered_formats if not f['is_video_type']]
-
-            seen_labels = set()
-            for f in video_formats + audio_formats:
-                fid = f.get('format_id', '')
-                ext = f.get('ext', '')
-                note = f.get('format_note', '') or f.get('resolution', '')
-                vcodec = f.get('vcodec', 'none')
-                acodec = f.get('acodec', 'none')
-                is_video = f['is_video_type']
-
-                height = f.get('height')
-                label = f"{height}p MP4 VIDEO" if is_video and height else f"{note} ({ext})"
-                if not is_video:
-                    label = f"Audio MP3 ({ext})" if ext == 'mp3' else f"Audio M4A ({ext})"
-
-                if label not in seen_labels:
-                    simplified_info['formats'].append({
-                        'format_id': fid,
-                        'ext': ext,
-                        'format_note': label,
-                        'vcodec': vcodec,
-                        'acodec': acodec,
-                        'type': 'video' if is_video else 'audio'
-                    })
-                    seen_labels.add(label)
-
-            return json.dumps(simplified_info)
+            return json.dumps({
+                "title": info.get("title"),
+                "thumbnail": info.get("thumbnail"),
+                "duration": info.get("duration"),
+                "uploader": info.get("uploader"),
+                "view_count": str(info.get("view_count", 0)),
+                "formats": formats
+            })
     except Exception as e:
-        return json.dumps({'error': str(e)})
+        return json.dumps({"error": str(e)})
 
 def download_video(url, format_id, output_path, is_audio, progress_callback):
     def progress_hook(d):
@@ -86,16 +53,22 @@ def download_video(url, format_id, output_path, is_audio, progress_callback):
             except:
                 pass
 
-    ydl_opts = {
-        'format': format_id,
-        'outtmpl': output_path,
-        'progress_hooks': [progress_hook],
-        'quiet': True,
-        'no_warnings': True,
-    }
+    # If it's a video-only format, merge with best audio
+    # The 'best' format is usually a combined one if available
+    download_format = format_id
+    if not is_audio and "+bestaudio" not in format_id:
+         # Check if it's a video-only format by some means or just apply the logic
+         # In yt-dlp, format_id+bestaudio works well for DASH
+         download_format = f"{format_id}+bestaudio/best"
 
-    # If audio only, we might want to convert to mp3 but that needs ffmpeg
-    # For now we use the selected format_id which should be m4a if audio
+    ydl_opts = {
+        "format": download_format,
+        "outtmpl": f"{output_path}/%(title)s.%(ext)s",
+        "merge_output_format": "mp4",
+        "progress_hooks": [progress_hook],
+        "quiet": True,
+        "no_warnings": True,
+    }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:

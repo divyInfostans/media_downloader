@@ -119,7 +119,7 @@ fun YouTubeDownloaderScreen(
                                 )
                             )
                             Text(
-                                text = "High Definition",
+                                text = "All Available Formats",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     color = PrimaryAccent,
                                     fontWeight = FontWeight.Medium
@@ -170,15 +170,39 @@ fun YouTubeDownloaderScreen(
                     }
                 }
 
+                // Success Message
+                uiState.successMessage?.let { success ->
+                    item {
+                        Surface(
+                            color = Color(0xFF2E7D32).copy(alpha = 0.1f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = success,
+                                color = Color(0xFF4CAF50),
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(16.dp)
+                            )
+                        }
+                    }
+                }
+
                 // Error Message
                 uiState.errorMessage?.let { error ->
                     item {
-                        Text(
-                            text = error,
-                            color = Color.Red,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
+                        Surface(
+                            color = Color.Red.copy(alpha = 0.1f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = error,
+                                color = Color.Red,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(16.dp)
+                            )
+                        }
                     }
                 }
             }

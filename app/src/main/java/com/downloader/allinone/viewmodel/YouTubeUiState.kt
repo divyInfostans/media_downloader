@@ -1,7 +1,7 @@
 package com.downloader.allinone.viewmodel
 
 enum class FormatType {
-    VIDEO, AUDIO
+    VIDEO, AUDIO, VIDEO_ONLY
 }
 
 data class FormatOption(
@@ -10,7 +10,9 @@ data class FormatOption(
     val subtitle: String,
     val type: FormatType,
     val ext: String = "mp4",
-    val filesize: Long = 0
+    val filesize: Long = 0,
+    val vcodec: String? = null,
+    val acodec: String? = null
 )
 
 data class YouTubeUiState(
@@ -29,5 +31,6 @@ data class YouTubeUiState(
     val isDownloading: Boolean = false,
     val downloadProgress: Float = 0f,
     val downloadSpeed: String = "",
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val successMessage: String? = null
 )

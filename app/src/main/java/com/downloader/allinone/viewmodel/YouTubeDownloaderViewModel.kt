@@ -1,7 +1,12 @@
 package com.downloader.allinone.viewmodel
 
+import android.Manifest
 import android.app.Application
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Environment
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.chaquo.python.Python
@@ -18,6 +23,8 @@ import java.io.File
 class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(YouTubeUiState())
     val uiState: StateFlow<YouTubeUiState> = _uiState.asStateFlow()
+
+    private val TAG = "YouTubeDownloaderVM"
 
     init {
         if (!Python.isStarted()) {
@@ -56,19 +63,13 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
         if (cleanedUrl.isBlank()) return
 
         viewModelScope.launch(Dispatchers.IO) {
-            // Reset state before fetching
             _uiState.update {
                 it.copy(
                     isLoading = true,
                     errorMessage = null,
+                    successMessage = null,
                     hasVideoInfo = false,
-                    videoTitle = "",
-                    creator = "",
-                    views = "",
-                    duration = "",
-                    thumbnailUrl = "",
-                    formats = emptyList(),
-                    selectedFormatId = null
+                    formats = emptyList()
                 )
             }
 
@@ -86,33 +87,34 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                 }
 
                 val formatsArray = info["formats"]?.jsonArray ?: emptyList()
+                Log.d(TAG, "Total formats fetched: ${formatsArray.size}")
+
                 val parsedFormats = formatsArray.mapNotNull { element ->
                     val obj = element.jsonObject
                     val formatId = obj["format_id"]?.jsonPrimitive?.content ?: return@mapNotNull null
                     val ext = obj["ext"]?.jsonPrimitive?.content ?: "mp4"
-                    val note = obj["format_note"]?.jsonPrimitive?.content ?: ""
+                    val resolution = obj["resolution"]?.jsonPrimitive?.content ?: ""
+                    val filesize = obj["filesize"]?.jsonPrimitive?.longOrNull ?: 0L
                     val vcodec = obj["vcodec"]?.jsonPrimitive?.content ?: "none"
                     val acodec = obj["acodec"]?.jsonPrimitive?.content ?: "none"
 
-                    val type = if (vcodec != "none") FormatType.VIDEO else FormatType.AUDIO
+                    val type = when {
+                        vcodec != "none" && acodec != "none" -> FormatType.VIDEO
+                        vcodec != "none" -> FormatType.VIDEO_ONLY
+                        else -> FormatType.AUDIO
+                    }
 
                     FormatOption(
                         id = formatId,
-                        title = note,
+                        title = resolution,
                         subtitle = "Format ID: $formatId",
                         type = type,
-                        ext = ext
+                        ext = ext,
+                        filesize = filesize,
+                        vcodec = vcodec,
+                        acodec = acodec
                     )
-                }.distinctBy { it.title }.sortedByDescending { it.type }
-
-                val bestVideo = parsedFormats.firstOrNull { it.type == FormatType.VIDEO }
-                val qualityTag = when {
-                    bestVideo?.title?.contains("2160p") == true -> "4K"
-                    bestVideo?.title?.contains("1440p") == true -> "2K"
-                    bestVideo?.title?.contains("1080p") == true -> "FHD"
-                    bestVideo?.title?.contains("720p") == true -> "HD"
-                    else -> ""
-                }
+                }.sortedWith(compareByDescending<FormatOption> { it.type }.thenByDescending { it.filesize })
 
                 _uiState.update {
                     it.copy(
@@ -120,8 +122,7 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                         videoTitle = info["title"]?.jsonPrimitive?.content ?: "Unknown Title",
                         creator = info["uploader"]?.jsonPrimitive?.content ?: "Unknown Creator",
                         views = info["view_count"]?.jsonPrimitive?.content ?: "0",
-                        duration = info["duration_string"]?.jsonPrimitive?.content ?: "0:00",
-                        qualityTag = qualityTag,
+                        duration = info["duration"]?.jsonPrimitive?.content ?: "0",
                         thumbnailUrl = info["thumbnail"]?.jsonPrimitive?.content ?: "",
                         formats = parsedFormats,
                         selectedFormatId = parsedFormats.firstOrNull()?.id,
@@ -129,7 +130,7 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                     )
                 }
             } catch (e: Exception) {
-                Log.e("YouTubeDownloaderVM", "Fetch failed", e)
+                Log.e(TAG, "Fetch failed", e)
                 _uiState.update { it.copy(isLoading = false, errorMessage = "Error: ${e.localizedMessage}") }
             }
         }
@@ -146,39 +147,53 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
 
         if (url.isBlank() || formatId == null || state.isDownloading) return
 
-        viewModelScope.launch(Dispatchers.IO) {
-            _uiState.update { it.copy(isDownloading = true, downloadProgress = 0f, errorMessage = null) }
+        // Permission check for Android < 13
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            val permission = Manifest.permission.WRITE_EXTERNAL_STORAGE
+            if (ContextCompat.checkSelfPermission(getApplication(), permission) != PackageManager.PERMISSION_GRANTED) {
+                _uiState.update { it.copy(errorMessage = "Storage permission required") }
+                return
+            }
+        }
 
-            val downloadDir = File(getApplication<Application>().getExternalFilesDir(null), "Downloads/YouTube")
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.update { it.copy(isDownloading = true, downloadProgress = 0f, errorMessage = null, successMessage = null) }
+
+            val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
             if (!downloadDir.exists()) downloadDir.mkdirs()
 
-            val cleanTitle = state.videoTitle.replace("[\\\\/:*?\"<>|]".toRegex(), "_")
-            val selectedFormat = state.formats.find { it.id == formatId }
-            val isAudio = selectedFormat?.type == FormatType.AUDIO
-            val ext = if (isAudio) "mp3" else (selectedFormat?.ext ?: "mp4")
-            val outputPath = File(downloadDir, "$cleanTitle.$ext").absolutePath
+            val targetFolder = File(downloadDir, "YouTubeDownloader")
+            if (!targetFolder.exists()) targetFolder.mkdirs()
+
+            Log.d(TAG, "Download started. URL: $url, Format: $formatId, Path: ${targetFolder.absolutePath}")
 
             try {
                 val py = Python.getInstance()
                 val module = py.getModule("yt_dlp_helper")
 
+                val selectedFormat = state.formats.find { it.id == formatId }
+                val isAudio = selectedFormat?.type == FormatType.AUDIO
+
                 val callback = object {
                     @Suppress("unused")
                     fun onProgress(progress: Float, speed: String) {
-                        updateDownloadProgress(progress, speed)
+                        _uiState.update { it.copy(downloadProgress = progress, downloadSpeed = speed) }
                     }
                 }
 
-                module.callAttr("download_video", url, formatId, outputPath, isAudio, callback)
-                _uiState.update { it.copy(isDownloading = false, downloadProgress = 100f) }
+                val success = module.callAttr("download_video", url, formatId, targetFolder.absolutePath, isAudio, callback).toBoolean()
+
+                if (success) {
+                    Log.d(TAG, "Download completed successfully.")
+                    _uiState.update { it.copy(isDownloading = false, downloadProgress = 1.0f, successMessage = "Download completed: ${targetFolder.absolutePath}") }
+                } else {
+                    Log.e(TAG, "Download failed reported by Python.")
+                    _uiState.update { it.copy(isDownloading = false, errorMessage = "Download failed") }
+                }
             } catch (e: Exception) {
-                Log.e("YouTubeDownloaderVM", "Download failed", e)
+                Log.e(TAG, "Download failed with exception", e)
                 _uiState.update { it.copy(isDownloading = false, errorMessage = "Download failed: ${e.localizedMessage}") }
             }
         }
-    }
-
-    private fun updateDownloadProgress(progress: Float, speed: String) {
-        _uiState.update { it.copy(downloadProgress = progress, downloadSpeed = speed) }
     }
 }
