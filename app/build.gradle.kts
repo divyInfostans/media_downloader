@@ -68,7 +68,7 @@ dependencies {
 chaquopy {
     defaultConfig {
         version = "3.12"
-        buildPython("/usr/bin/python3")
+        // buildPython("/usr/bin/python3") // Use default system python for portability
         pip {
             install("yt-dlp")
         }

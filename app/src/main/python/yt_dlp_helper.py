@@ -1,6 +1,7 @@
 import yt_dlp
 import json
 import os
+import shutil
 
 def get_video_info(url):
     ydl_opts = {
@@ -19,7 +20,6 @@ def get_video_info(url):
                 vcodec = f.get("vcodec")
                 acodec = f.get("acodec")
 
-                # Filter out broken formats
                 if vcodec == "none" and acodec == "none":
                     continue
 
@@ -28,10 +28,8 @@ def get_video_info(url):
                 elif acodec != "none" and vcodec == "none":
                     audio_only_formats.append(f)
                 elif vcodec != "none" and acodec != "none":
-                    # Progressive formats - treat as video for simplicity or if high quality
                     video_only_formats.append(f)
 
-            # Create merged video list (virtual formats)
             merged_video_list = []
             seen_resolutions = set()
             for v in video_only_formats:
@@ -49,10 +47,8 @@ def get_video_info(url):
                 })
                 seen_resolutions.add(res)
 
-            # Sort video list by resolution DESC
             merged_video_list.sort(key=lambda x: x["height"] or 0, reverse=True)
 
-            # Process audio list
             audio_list = []
             seen_bitrates = set()
             for a in audio_only_formats:
@@ -70,7 +66,6 @@ def get_video_info(url):
                 })
                 seen_bitrates.add(abr)
 
-            # Sort audio list by bitrate DESC
             audio_list.sort(key=lambda x: x["abr"] or 0, reverse=True)
 
             return json.dumps({
@@ -104,10 +99,17 @@ def download_video(url, format_id, output_path, is_audio, progress_callback):
             except:
                 pass
 
+    ffmpeg_available = shutil.which("ffmpeg") is not None
+
     download_format = format_id
     if not is_audio:
-         # For video, ensure best audio is merged
-         download_format = f"{format_id}+bestaudio/best"
+        if ffmpeg_available:
+            download_format = f"{format_id}+bestaudio/best"
+        else:
+            # If ffmpeg is missing, we must use a progressive format.
+            # We try to find the best progressive format that matches or is close to the resolution.
+            # But the simplest fallback is 'best' which is usually progressive if no merging allowed.
+            download_format = "best"
 
     ydl_opts = {
         "format": download_format,
@@ -121,7 +123,14 @@ def download_video(url, format_id, output_path, is_audio, progress_callback):
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
-        return final_file_path
+
+        if final_file_path and os.path.exists(final_file_path):
+            return json.dumps({"status": "success", "file_path": final_file_path})
+        else:
+            return json.dumps({"status": "error", "error": "Download finished but file not found"})
+
     except Exception as e:
-        print(f"Download error: {e}")
-        return None
+        error_msg = str(e)
+        if "ffmpeg" in error_msg.lower():
+             error_msg = "FFmpeg is not installed on this device. High quality merging is not supported. Please provide FFmpeg binary in assets."
+        return json.dumps({"status": "error", "error": error_msg})

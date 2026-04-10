@@ -187,23 +187,29 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                     }
                 }
 
-                val tempFilePathStr = module.callAttr("download_video", url, formatId, cacheDir.absolutePath, isAudio, callback)?.toString()
+                val resultJson = module.callAttr("download_video", url, formatId, cacheDir.absolutePath, isAudio, callback).toString()
+                val result = Json.parseToJsonElement(resultJson).jsonObject
 
-                if (tempFilePathStr != null) {
-                    val tempFile = File(tempFilePathStr)
-                    if (tempFile.exists()) {
-                        val uri = saveToDownloads(getApplication(), tempFile, isAudio)
-                        if (uri != null) {
-                            tempFile.delete()
-                            _uiState.update { it.copy(isDownloading = false, downloadProgress = 1.0f, successMessage = "Download completed: ${tempFile.name}") }
+                if (result["status"]?.jsonPrimitive?.content == "success") {
+                    val tempFilePathStr = result["file_path"]?.jsonPrimitive?.content
+                    if (tempFilePathStr != null) {
+                        val tempFile = File(tempFilePathStr)
+                        if (tempFile.exists()) {
+                            val uri = saveToDownloads(getApplication(), tempFile, isAudio)
+                            if (uri != null) {
+                                tempFile.delete()
+                                _uiState.update { it.copy(isDownloading = false, downloadProgress = 1.0f, successMessage = "Download completed: ${tempFile.name}") }
+                            } else {
+                                _uiState.update { it.copy(isDownloading = false, errorMessage = "Failed to save file to Downloads") }
+                            }
                         } else {
-                            _uiState.update { it.copy(isDownloading = false, errorMessage = "Failed to save file to Downloads") }
+                            _uiState.update { it.copy(isDownloading = false, errorMessage = "Download error: Temp file not found") }
                         }
-                    } else {
-                        _uiState.update { it.copy(isDownloading = false, errorMessage = "Download failed") }
                     }
                 } else {
-                    _uiState.update { it.copy(isDownloading = false, errorMessage = "Download failed") }
+                    val error = result["error"]?.jsonPrimitive?.content ?: "Unknown download error"
+                    Log.e(TAG, "Download failed: $error")
+                    _uiState.update { it.copy(isDownloading = false, errorMessage = error) }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Download failed", e)
