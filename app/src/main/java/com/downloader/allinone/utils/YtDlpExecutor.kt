@@ -14,14 +14,37 @@ class YtDlpExecutor(private val context: Context) {
     private val ytDlpFile = File(binDir, "yt-dlp")
     private val ffmpegFile = File(binDir, "ffmpeg")
 
-    suspend fun initBinaries() = withContext(Dispatchers.IO) {
+    suspend fun initBinaries(): Boolean = withContext(Dispatchers.IO) {
         if (!binDir.exists()) binDir.mkdirs()
+
+        Log.d(TAG, "Device ABIs: ${android.os.Build.SUPPORTED_ABIS.joinToString(", ")}")
 
         copyAssetToInternal("yt-dlp", ytDlpFile)
         copyAssetToInternal("ffmpeg", ffmpegFile)
 
         ensureExecutable(ytDlpFile)
         ensureExecutable(ffmpegFile)
+
+        validateBinary()
+    }
+
+    private suspend fun validateBinary(): Boolean = withContext(Dispatchers.IO) {
+        val command = listOf(ytDlpFile.absolutePath, "--version")
+        try {
+            val process = ProcessBuilder(command).start()
+            val output = process.inputStream.bufferedReader().use { it.readText() }.trim()
+            process.waitFor()
+
+            if (process.exitValue() == 0) {
+                Log.d(TAG, "yt-dlp validation success, version: $output")
+                return@withContext true
+            } else {
+                Log.e(TAG, "yt-dlp validation failed with exit code ${process.exitValue()}")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "yt-dlp validation exception: ${e.message}")
+        }
+        false
     }
 
     private fun ensureExecutable(file: File) {

@@ -20,7 +20,10 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
 
     init {
         viewModelScope.launch {
-            executor.initBinaries()
+            val success = executor.initBinaries()
+            if (!success) {
+                _uiState.update { it.copy(errorMessage = "yt-dlp binary not supported on this device") }
+            }
         }
     }
 
