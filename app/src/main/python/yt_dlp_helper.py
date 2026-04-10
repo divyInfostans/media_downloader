@@ -2,11 +2,15 @@ import yt_dlp
 import json
 import os
 import shutil
+import traceback
 
 def get_video_info(url):
     ydl_opts = {
         "quiet": True,
-        "no_warnings": True
+        "no_warnings": True,
+        "nocheckcertificate": True,
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "referer": "https://www.youtube.com/"
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -83,7 +87,7 @@ def get_video_info(url):
                 "audio_formats": audio_list
             })
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps({"error": str(e), "traceback": traceback.format_exc()})
 
 def download_video(url, format_id, output_path, is_audio, is_progressive, progress_callback):
     final_file_path = None
@@ -118,11 +122,9 @@ def download_video(url, format_id, output_path, is_audio, is_progressive, progre
 
     download_format = format_id
     if not is_audio and not is_progressive:
-        # If video-only, try to merge with audio.
         if ffmpeg_available:
             download_format = f"{format_id}+bestaudio"
         else:
-            # Cannot merge without ffmpeg.
             return json.dumps({"status": "error", "error": "High quality video merging requires FFmpeg. Please provide binary in assets or select a lower quality (progressive) format."})
 
     ydl_opts = {
@@ -132,6 +134,9 @@ def download_video(url, format_id, output_path, is_audio, is_progressive, progre
         "progress_hooks": [progress_hook],
         "quiet": True,
         "no_warnings": True,
+        "nocheckcertificate": True,
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "referer": "https://www.youtube.com/"
     }
 
     try:
@@ -144,4 +149,4 @@ def download_video(url, format_id, output_path, is_audio, is_progressive, progre
             return json.dumps({"status": "error", "error": "Download finished but file not found"})
 
     except Exception as e:
-        return json.dumps({"status": "error", "error": str(e)})
+        return json.dumps({"status": "error", "error": str(e), "traceback": traceback.format_exc()})

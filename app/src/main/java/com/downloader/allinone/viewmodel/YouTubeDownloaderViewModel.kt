@@ -216,15 +216,18 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                                 tempFile.delete()
                                 _uiState.update { it.copy(isDownloading = false, downloadProgress = 1.0f, successMessage = "Download completed: ${tempFile.name}") }
                             } else {
+                                Log.e(TAG, "MediaStore save failed for: ${tempFile.absolutePath}")
                                 _uiState.update { it.copy(isDownloading = false, errorMessage = "Failed to save file to Downloads") }
                             }
                         } else {
-                            _uiState.update { it.copy(isDownloading = false, errorMessage = "Download error: Temp file not found") }
+                            Log.e(TAG, "Temp file missing at: $tempFilePathStr")
+                            _uiState.update { it.copy(isDownloading = false, errorMessage = "Download error: File processing failed") }
                         }
                     }
                 } else {
                     val error = result["error"]?.jsonPrimitive?.content ?: "Unknown download error"
-                    Log.e(TAG, "Download failed: $error")
+                    val tb = result["traceback"]?.jsonPrimitive?.content
+                    Log.e(TAG, "Download failed: $error\n$tb")
                     _uiState.update { it.copy(isDownloading = false, errorMessage = error) }
                 }
             } catch (e: Exception) {
