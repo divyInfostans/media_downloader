@@ -23,11 +23,15 @@ def get_video_info(url):
                 if vcodec == "none" and acodec == "none":
                     continue
 
+                is_progressive = vcodec != "none" and acodec != "none"
+
                 if vcodec != "none" and acodec == "none":
+                    f['is_progressive'] = False
                     video_only_formats.append(f)
                 elif acodec != "none" and vcodec == "none":
                     audio_only_formats.append(f)
-                elif vcodec != "none" and acodec != "none":
+                elif is_progressive:
+                    f['is_progressive'] = True
                     video_only_formats.append(f)
 
             merged_video_list = []
@@ -43,7 +47,8 @@ def get_video_info(url):
                     "height": res,
                     "ext": v.get("ext"),
                     "filesize": v.get("filesize") or 0,
-                    "type": "video"
+                    "type": "video",
+                    "is_progressive": v.get('is_progressive', False)
                 })
                 seen_resolutions.add(res)
 
@@ -80,16 +85,26 @@ def get_video_info(url):
     except Exception as e:
         return json.dumps({"error": str(e)})
 
-def download_video(url, format_id, output_path, is_audio, progress_callback):
+def download_video(url, format_id, output_path, is_audio, is_progressive, progress_callback):
     final_file_path = None
 
     def progress_hook(d):
         nonlocal final_file_path
         if d['status'] == 'downloading':
-            p = d.get('_percent_str', '0%').replace('%', '').strip()
-            s = d.get('_speed_str', '0B/s')
+            total = d.get('total_bytes') or d.get('total_bytes_estimate')
+            downloaded = d.get('downloaded_bytes', 0)
+            if total:
+                percent = (downloaded / total)
+            else:
+                p_str = d.get('_percent_str', '0%').replace('%', '').strip()
+                try:
+                    percent = float(p_str) / 100.0
+                except:
+                    percent = 0.0
+
+            speed = d.get('_speed_str', '0B/s')
             try:
-                progress_callback.onProgress(float(p) / 100.0, s)
+                progress_callback.onProgress(percent, speed)
             except:
                 pass
         elif d['status'] == 'finished':
@@ -102,14 +117,13 @@ def download_video(url, format_id, output_path, is_audio, progress_callback):
     ffmpeg_available = shutil.which("ffmpeg") is not None
 
     download_format = format_id
-    if not is_audio:
-        # Strictly use selected format_id and merge with best audio
-        download_format = f"{format_id}+bestaudio/best"
-        if not ffmpeg_available:
-            # If ffmpeg is missing and we try to merge, it will fail.
-            # We must warn or handle it. User wants high quality to work.
-            # But without ffmpeg merging is impossible for DASH.
-            pass
+    if not is_audio and not is_progressive:
+        # If video-only, try to merge with audio.
+        if ffmpeg_available:
+            download_format = f"{format_id}+bestaudio"
+        else:
+            # Cannot merge without ffmpeg.
+            return json.dumps({"status": "error", "error": "High quality video merging requires FFmpeg. Please provide binary in assets or select a lower quality (progressive) format."})
 
     ydl_opts = {
         "format": download_format,
@@ -130,7 +144,4 @@ def download_video(url, format_id, output_path, is_audio, progress_callback):
             return json.dumps({"status": "error", "error": "Download finished but file not found"})
 
     except Exception as e:
-        error_msg = str(e)
-        if "ffmpeg" in error_msg.lower():
-             error_msg = "FFmpeg is not installed on this device. High quality merging (1080p+) requires FFmpeg. Please provide binary in assets or select a progressive format (if any)."
-        return json.dumps({"status": "error", "error": error_msg})
+        return json.dumps({"status": "error", "error": str(e)})

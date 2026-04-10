@@ -259,7 +259,10 @@ fun YouTubeDownloaderScreen(
                             contentDescription = null
                         )
                         val buttonText = when {
-                            uiState.isDownloading -> "Downloading... ${(uiState.downloadProgress * 100).toInt()}%"
+                            uiState.isDownloading -> {
+                                val progress = (uiState.downloadProgress * 100).toInt()
+                                if (progress > 0) "Downloading... $progress%" else "Starting download..."
+                            }
                             uiState.successMessage != null -> "Downloaded"
                             uiState.errorMessage != null -> "Retry Download"
                             else -> "Download Now"

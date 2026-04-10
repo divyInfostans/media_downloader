@@ -99,6 +99,7 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                     val ext = obj["ext"]?.jsonPrimitive?.content ?: "mp4"
                     val resolution = obj["resolution"]?.jsonPrimitive?.content ?: ""
                     val filesize = obj["filesize"]?.jsonPrimitive?.longOrNull ?: 0L
+                    val isProgressive = obj["is_progressive"]?.jsonPrimitive?.booleanOrNull ?: false
 
                     FormatOption(
                         id = formatId,
@@ -106,7 +107,8 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                         subtitle = "Format ID: $formatId",
                         type = FormatType.VIDEO,
                         ext = ext,
-                        filesize = filesize
+                        filesize = filesize,
+                        isProgressive = isProgressive
                     )
                 }
 
@@ -129,6 +131,15 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
 
                 val allFormats = parsedVideoFormats + parsedAudioFormats
 
+                val bestVideo = parsedVideoFormats.firstOrNull()
+                val qualityTag = when {
+                    bestVideo?.title?.contains("2160p") == true -> "4K"
+                    bestVideo?.title?.contains("1440p") == true -> "2K"
+                    bestVideo?.title?.contains("1080p") == true -> "FHD"
+                    bestVideo?.title?.contains("720p") == true -> "HD"
+                    else -> ""
+                }
+
                 _uiState.update {
                     it.copy(
                         hasVideoInfo = true,
@@ -136,6 +147,7 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                         creator = info["uploader"]?.jsonPrimitive?.content ?: "Unknown Creator",
                         views = info["view_count"]?.jsonPrimitive?.content ?: "0",
                         duration = info["duration"]?.jsonPrimitive?.content ?: "0",
+                        qualityTag = qualityTag,
                         thumbnailUrl = info["thumbnail"]?.jsonPrimitive?.content ?: "",
                         formats = allFormats,
                         selectedFormatId = allFormats.firstOrNull()?.id,
@@ -179,18 +191,19 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
 
                 val selectedFormat = state.formats.find { it.id == formatId }
                 val isAudio = selectedFormat?.type == FormatType.AUDIO
+                val isProgressive = selectedFormat?.isProgressive ?: false
                 val resolution = selectedFormat?.title ?: "N/A"
 
-                Log.d(TAG, "Download Triggered - ID: $formatId, Type: ${if(isAudio) "Audio" else "Video"}, Res: $resolution")
+                Log.d(TAG, "Download Triggered - ID: $formatId, Type: ${if(isAudio) "Audio" else "Video"}, Res: $resolution, Progressive: $isProgressive")
 
                 val callback = object {
                     @Suppress("unused")
                     fun onProgress(progress: Float, speed: String) {
-                        _uiState.update { it.copy(downloadProgress = progress, downloadSpeed = speed) }
+                        _uiState.update { it.copy(downloadProgress = progress.coerceIn(0f, 1f), downloadSpeed = speed) }
                     }
                 }
 
-                val resultJson = module.callAttr("download_video", url, formatId, cacheDir.absolutePath, isAudio, callback).toString()
+                val resultJson = module.callAttr("download_video", url, formatId, cacheDir.absolutePath, isAudio, isProgressive, callback).toString()
                 val result = Json.parseToJsonElement(resultJson).jsonObject
 
                 if (result["status"]?.jsonPrimitive?.content == "success") {

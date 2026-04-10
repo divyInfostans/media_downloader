@@ -12,7 +12,8 @@ data class FormatOption(
     val ext: String = "mp4",
     val filesize: Long = 0,
     val vcodec: String? = null,
-    val acodec: String? = null
+    val acodec: String? = null,
+    val isProgressive: Boolean = false
 )
 
 data class YouTubeUiState(
