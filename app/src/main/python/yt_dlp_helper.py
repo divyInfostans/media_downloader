@@ -1,5 +1,6 @@
 import yt_dlp
 import json
+import os
 
 def get_video_info(url):
     ydl_opts = {
@@ -12,9 +13,6 @@ def get_video_info(url):
 
             formats = []
             for f in info.get("formats", []):
-                # We want formats with filesize if possible, but DASH formats might not always have it
-                # before download. However, we'll try to include all relevant ones.
-
                 vcodec = f.get("vcodec")
                 acodec = f.get("acodec")
 
@@ -39,7 +37,10 @@ def get_video_info(url):
         return json.dumps({"error": str(e)})
 
 def download_video(url, format_id, output_path, is_audio, progress_callback):
+    final_file_path = None
+
     def progress_hook(d):
+        nonlocal final_file_path
         if d['status'] == 'downloading':
             p = d.get('_percent_str', '0%').replace('%', '').strip()
             s = d.get('_speed_str', '0B/s')
@@ -48,17 +49,14 @@ def download_video(url, format_id, output_path, is_audio, progress_callback):
             except:
                 pass
         elif d['status'] == 'finished':
+            final_file_path = d.get('filename')
             try:
                 progress_callback.onProgress(1.0, "Finished")
             except:
                 pass
 
-    # If it's a video-only format, merge with best audio
-    # The 'best' format is usually a combined one if available
     download_format = format_id
     if not is_audio and "+bestaudio" not in format_id:
-         # Check if it's a video-only format by some means or just apply the logic
-         # In yt-dlp, format_id+bestaudio works well for DASH
          download_format = f"{format_id}+bestaudio/best"
 
     ydl_opts = {
@@ -73,7 +71,7 @@ def download_video(url, format_id, output_path, is_audio, progress_callback):
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
-        return True
+        return final_file_path
     except Exception as e:
         print(f"Download error: {e}")
-        return False
+        return None

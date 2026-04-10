@@ -2,9 +2,13 @@ package com.downloader.allinone.viewmodel
 
 import android.Manifest
 import android.app.Application
+import android.content.ContentValues
+import android.content.Context
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
@@ -147,8 +151,8 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
 
         if (url.isBlank() || formatId == null || state.isDownloading) return
 
-        // Permission check for Android < 13
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+        // Permission check for Android < 10 (API 29)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             val permission = Manifest.permission.WRITE_EXTERNAL_STORAGE
             if (ContextCompat.checkSelfPermission(getApplication(), permission) != PackageManager.PERMISSION_GRANTED) {
                 _uiState.update { it.copy(errorMessage = "Storage permission required") }
@@ -159,13 +163,8 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
         viewModelScope.launch(Dispatchers.IO) {
             _uiState.update { it.copy(isDownloading = true, downloadProgress = 0f, errorMessage = null, successMessage = null) }
 
-            val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            if (!downloadDir.exists()) downloadDir.mkdirs()
-
-            val targetFolder = File(downloadDir, "YouTubeDownloader")
-            if (!targetFolder.exists()) targetFolder.mkdirs()
-
-            Log.d(TAG, "Download started. URL: $url, Format: $formatId, Path: ${targetFolder.absolutePath}")
+            val cacheDir = getApplication<Application>().cacheDir
+            Log.d(TAG, "Temp download path: ${cacheDir.absolutePath}")
 
             try {
                 val py = Python.getInstance()
@@ -181,11 +180,25 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                     }
                 }
 
-                val success = module.callAttr("download_video", url, formatId, targetFolder.absolutePath, isAudio, callback).toBoolean()
+                val tempFilePathStr = module.callAttr("download_video", url, formatId, cacheDir.absolutePath, isAudio, callback)?.toString()
 
-                if (success) {
-                    Log.d(TAG, "Download completed successfully.")
-                    _uiState.update { it.copy(isDownloading = false, downloadProgress = 1.0f, successMessage = "Download completed: ${targetFolder.absolutePath}") }
+                if (tempFilePathStr != null) {
+                    val tempFile = File(tempFilePathStr)
+                    if (tempFile.exists()) {
+                        Log.d(TAG, "Download to temp file successful: ${tempFile.absolutePath}")
+                        val uri = saveToDownloads(getApplication(), tempFile)
+                        if (uri != null) {
+                            Log.d(TAG, "File moved to Downloads via MediaStore. URI: $uri")
+                            tempFile.delete()
+                            _uiState.update { it.copy(isDownloading = false, downloadProgress = 1.0f, successMessage = "Download completed: ${tempFile.name}") }
+                        } else {
+                            Log.e(TAG, "Failed to save file to MediaStore.")
+                            _uiState.update { it.copy(isDownloading = false, errorMessage = "Failed to save file to Downloads") }
+                        }
+                    } else {
+                        Log.e(TAG, "Temp file does not exist after Python download reported success.")
+                        _uiState.update { it.copy(isDownloading = false, errorMessage = "Download failed") }
+                    }
                 } else {
                     Log.e(TAG, "Download failed reported by Python.")
                     _uiState.update { it.copy(isDownloading = false, errorMessage = "Download failed") }
@@ -195,5 +208,47 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                 _uiState.update { it.copy(isDownloading = false, errorMessage = "Download failed: ${e.localizedMessage}") }
             }
         }
+    }
+
+    private fun saveToDownloads(context: Context, file: File): Uri? {
+        val contentValues = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
+            put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+        }
+
+        val resolver = context.contentResolver
+        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Downloads.EXTERNAL_CONTENT_URI
+        } else {
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI // Fallback for older APIs if needed
+        }
+
+        val uri = resolver.insert(collection, contentValues)
+
+        uri?.let {
+            try {
+                resolver.openOutputStream(it)?.use { output ->
+                    file.inputStream().use { input ->
+                        input.copyTo(output)
+                    }
+                }
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    contentValues.clear()
+                    contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                    resolver.update(it, contentValues, null, null)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error copying file to MediaStore", e)
+                resolver.delete(it, null, null)
+                return null
+            }
+        }
+
+        return uri
     }
 }
