@@ -3,6 +3,9 @@ package com.downloader.allinone.ui.dashboard.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -58,24 +61,38 @@ fun DownloadItem(
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = task.sizeInfo,
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                color = TextSecondary.copy(alpha = 0.4f),
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 9.sp
+                        Column {
+                            Text(
+                                text = task.sizeInfo,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    color = TextSecondary.copy(alpha = 0.4f),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 9.sp
+                                )
                             )
-                        )
-                        Text(
-                            text = "${(task.progress * 100).toInt()}%",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                color = PrimaryAccent,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 9.sp
+                            Text(
+                                text = "${(task.progress * 100).toInt()}%",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    color = PrimaryAccent,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 9.sp
+                                )
                             )
-                        )
+                        }
+                        IconButton(
+                            onClick = { onPauseResume(task.id) },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (task.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                                contentDescription = if (task.isPaused) "Resume" else "Pause",
+                                tint = PrimaryAccent,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
                 }
             }
