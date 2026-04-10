@@ -90,35 +90,44 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                     return@launch
                 }
 
-                val formatsArray = info["formats"]?.jsonArray ?: emptyList()
-                Log.d(TAG, "Total formats fetched: ${formatsArray.size}")
+                val videoFormats = info["video_formats"]?.jsonArray ?: emptyList()
+                val audioFormats = info["audio_formats"]?.jsonArray ?: emptyList()
 
-                val parsedFormats = formatsArray.mapNotNull { element ->
+                val parsedVideoFormats = videoFormats.mapNotNull { element ->
                     val obj = element.jsonObject
                     val formatId = obj["format_id"]?.jsonPrimitive?.content ?: return@mapNotNull null
                     val ext = obj["ext"]?.jsonPrimitive?.content ?: "mp4"
                     val resolution = obj["resolution"]?.jsonPrimitive?.content ?: ""
                     val filesize = obj["filesize"]?.jsonPrimitive?.longOrNull ?: 0L
-                    val vcodec = obj["vcodec"]?.jsonPrimitive?.content ?: "none"
-                    val acodec = obj["acodec"]?.jsonPrimitive?.content ?: "none"
-
-                    val type = when {
-                        vcodec != "none" && acodec != "none" -> FormatType.VIDEO
-                        vcodec != "none" -> FormatType.VIDEO_ONLY
-                        else -> FormatType.AUDIO
-                    }
 
                     FormatOption(
                         id = formatId,
                         title = resolution,
                         subtitle = "Format ID: $formatId",
-                        type = type,
+                        type = FormatType.VIDEO,
                         ext = ext,
-                        filesize = filesize,
-                        vcodec = vcodec,
-                        acodec = acodec
+                        filesize = filesize
                     )
-                }.sortedWith(compareByDescending<FormatOption> { it.type }.thenByDescending { it.filesize })
+                }
+
+                val parsedAudioFormats = audioFormats.mapNotNull { element ->
+                    val obj = element.jsonObject
+                    val formatId = obj["format_id"]?.jsonPrimitive?.content ?: return@mapNotNull null
+                    val ext = obj["ext"]?.jsonPrimitive?.content ?: "m4a"
+                    val bitrate = obj["bitrate"]?.jsonPrimitive?.content ?: ""
+                    val filesize = obj["filesize"]?.jsonPrimitive?.longOrNull ?: 0L
+
+                    FormatOption(
+                        id = formatId,
+                        title = bitrate,
+                        subtitle = "Format ID: $formatId",
+                        type = FormatType.AUDIO,
+                        ext = ext,
+                        filesize = filesize
+                    )
+                }
+
+                val allFormats = parsedVideoFormats + parsedAudioFormats
 
                 _uiState.update {
                     it.copy(
@@ -128,8 +137,8 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                         views = info["view_count"]?.jsonPrimitive?.content ?: "0",
                         duration = info["duration"]?.jsonPrimitive?.content ?: "0",
                         thumbnailUrl = info["thumbnail"]?.jsonPrimitive?.content ?: "",
-                        formats = parsedFormats,
-                        selectedFormatId = parsedFormats.firstOrNull()?.id,
+                        formats = allFormats,
+                        selectedFormatId = allFormats.firstOrNull()?.id,
                         isLoading = false
                     )
                 }
@@ -151,7 +160,6 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
 
         if (url.isBlank() || formatId == null || state.isDownloading) return
 
-        // Permission check for Android < 10 (API 29)
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             val permission = Manifest.permission.WRITE_EXTERNAL_STORAGE
             if (ContextCompat.checkSelfPermission(getApplication(), permission) != PackageManager.PERMISSION_GRANTED) {
@@ -164,7 +172,6 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
             _uiState.update { it.copy(isDownloading = true, downloadProgress = 0f, errorMessage = null, successMessage = null) }
 
             val cacheDir = getApplication<Application>().cacheDir
-            Log.d(TAG, "Temp download path: ${cacheDir.absolutePath}")
 
             try {
                 val py = Python.getInstance()
@@ -185,35 +192,30 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                 if (tempFilePathStr != null) {
                     val tempFile = File(tempFilePathStr)
                     if (tempFile.exists()) {
-                        Log.d(TAG, "Download to temp file successful: ${tempFile.absolutePath}")
-                        val uri = saveToDownloads(getApplication(), tempFile)
+                        val uri = saveToDownloads(getApplication(), tempFile, isAudio)
                         if (uri != null) {
-                            Log.d(TAG, "File moved to Downloads via MediaStore. URI: $uri")
                             tempFile.delete()
                             _uiState.update { it.copy(isDownloading = false, downloadProgress = 1.0f, successMessage = "Download completed: ${tempFile.name}") }
                         } else {
-                            Log.e(TAG, "Failed to save file to MediaStore.")
                             _uiState.update { it.copy(isDownloading = false, errorMessage = "Failed to save file to Downloads") }
                         }
                     } else {
-                        Log.e(TAG, "Temp file does not exist after Python download reported success.")
                         _uiState.update { it.copy(isDownloading = false, errorMessage = "Download failed") }
                     }
                 } else {
-                    Log.e(TAG, "Download failed reported by Python.")
                     _uiState.update { it.copy(isDownloading = false, errorMessage = "Download failed") }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Download failed with exception", e)
+                Log.e(TAG, "Download failed", e)
                 _uiState.update { it.copy(isDownloading = false, errorMessage = "Download failed: ${e.localizedMessage}") }
             }
         }
     }
 
-    private fun saveToDownloads(context: Context, file: File): Uri? {
+    private fun saveToDownloads(context: Context, file: File, isAudio: Boolean): Uri? {
         val contentValues = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
-            put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
+            put(MediaStore.MediaColumns.MIME_TYPE, if (isAudio) "audio/mpeg" else "video/mp4")
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
@@ -224,7 +226,7 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
         val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             MediaStore.Downloads.EXTERNAL_CONTENT_URI
         } else {
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI // Fallback for older APIs if needed
+            if (isAudio) MediaStore.Audio.Media.EXTERNAL_CONTENT_URI else MediaStore.Video.Media.EXTERNAL_CONTENT_URI
         }
 
         val uri = resolver.insert(collection, contentValues)
@@ -243,7 +245,7 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                     resolver.update(it, contentValues, null, null)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error copying file to MediaStore", e)
+                Log.e(TAG, "Error copying file", e)
                 resolver.delete(it, null, null)
                 return null
             }

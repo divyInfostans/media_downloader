@@ -24,6 +24,7 @@ import com.downloader.allinone.ui.theme.TextSecondary
 import com.downloader.allinone.ui.youtube.components.FormatOptionItem
 import com.downloader.allinone.ui.youtube.components.VideoPreviewCard
 import com.downloader.allinone.viewmodel.YouTubeDownloaderViewModel
+import com.downloader.allinone.viewmodel.FormatType
 
 import androidx.compose.ui.platform.LocalClipboardManager
 
@@ -74,7 +75,7 @@ fun YouTubeDownloaderScreen(
                     .fillMaxSize()
                     .padding(paddingValues),
                 contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 100.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 // Input Section
                 item {
@@ -103,38 +104,50 @@ fun YouTubeDownloaderScreen(
                         )
                     }
 
-                    // Format Selection Header
-                    item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                    // Video Formats Section
+                    val videoFormats = uiState.formats.filter { it.type == FormatType.VIDEO }
+                    if (videoFormats.isNotEmpty()) {
+                        item {
                             Text(
-                                text = "SELECT FORMAT",
+                                text = "🎥 VIDEO",
                                 style = MaterialTheme.typography.labelMedium.copy(
                                     fontWeight = FontWeight.Black,
                                     color = TextSecondary,
                                     letterSpacing = 2.sp
-                                )
+                                ),
+                                modifier = Modifier.padding(top = 8.dp)
                             )
-                            Text(
-                                text = "All Available Formats",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    color = PrimaryAccent,
-                                    fontWeight = FontWeight.Medium
-                                )
+                        }
+                        items(videoFormats) { option ->
+                            FormatOptionItem(
+                                option = option,
+                                isSelected = uiState.selectedFormatId == option.id,
+                                onClick = { viewModel.onFormatSelected(option.id) }
                             )
                         }
                     }
 
-                    // Format Options
-                    items(uiState.formats) { option ->
-                        FormatOptionItem(
-                            option = option,
-                            isSelected = uiState.selectedFormatId == option.id,
-                            onClick = { viewModel.onFormatSelected(option.id) }
-                        )
+                    // Audio Formats Section
+                    val audioFormats = uiState.formats.filter { it.type == FormatType.AUDIO }
+                    if (audioFormats.isNotEmpty()) {
+                        item {
+                            Text(
+                                text = "🎵 AUDIO",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Black,
+                                    color = TextSecondary,
+                                    letterSpacing = 2.sp
+                                ),
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                        }
+                        items(audioFormats) { option ->
+                            FormatOptionItem(
+                                option = option,
+                                isSelected = uiState.selectedFormatId == option.id,
+                                onClick = { viewModel.onFormatSelected(option.id) }
+                            )
+                        }
                     }
                 }
 

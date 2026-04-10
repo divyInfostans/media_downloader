@@ -11,19 +11,67 @@ def get_video_info(url):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
-            formats = []
-            for f in info.get("formats", []):
+            formats = info.get("formats", [])
+            video_only_formats = []
+            audio_only_formats = []
+
+            for f in formats:
                 vcodec = f.get("vcodec")
                 acodec = f.get("acodec")
 
-                formats.append({
-                    "format_id": f.get("format_id"),
-                    "ext": f.get("ext"),
-                    "resolution": f.get("resolution") or f"{f.get('height')}p" if f.get('height') else "audio",
-                    "filesize": f.get("filesize") or 0,
-                    "vcodec": vcodec,
-                    "acodec": acodec
+                # Filter out broken formats
+                if vcodec == "none" and acodec == "none":
+                    continue
+
+                if vcodec != "none" and acodec == "none":
+                    video_only_formats.append(f)
+                elif acodec != "none" and vcodec == "none":
+                    audio_only_formats.append(f)
+                elif vcodec != "none" and acodec != "none":
+                    # Progressive formats - treat as video for simplicity or if high quality
+                    video_only_formats.append(f)
+
+            # Create merged video list (virtual formats)
+            merged_video_list = []
+            seen_resolutions = set()
+            for v in video_only_formats:
+                res = v.get("height")
+                if not res or res in seen_resolutions:
+                    continue
+
+                merged_video_list.append({
+                    "format_id": v.get("format_id"),
+                    "resolution": f"{res}p",
+                    "height": res,
+                    "ext": v.get("ext"),
+                    "filesize": v.get("filesize") or 0,
+                    "type": "video"
                 })
+                seen_resolutions.add(res)
+
+            # Sort video list by resolution DESC
+            merged_video_list.sort(key=lambda x: x["height"] or 0, reverse=True)
+
+            # Process audio list
+            audio_list = []
+            seen_bitrates = set()
+            for a in audio_only_formats:
+                abr = a.get("abr")
+                if not abr or abr in seen_bitrates:
+                    continue
+
+                audio_list.append({
+                    "format_id": a.get("format_id"),
+                    "bitrate": f"{int(abr)} kbps",
+                    "abr": abr,
+                    "ext": a.get("ext"),
+                    "filesize": a.get("filesize") or 0,
+                    "type": "audio"
+                })
+                seen_bitrates.add(abr)
+
+            # Sort audio list by bitrate DESC
+            audio_list.sort(key=lambda x: x["abr"] or 0, reverse=True)
 
             return json.dumps({
                 "title": info.get("title"),
@@ -31,7 +79,8 @@ def get_video_info(url):
                 "duration": info.get("duration"),
                 "uploader": info.get("uploader"),
                 "view_count": str(info.get("view_count", 0)),
-                "formats": formats
+                "video_formats": merged_video_list,
+                "audio_formats": audio_list
             })
     except Exception as e:
         return json.dumps({"error": str(e)})
@@ -56,7 +105,8 @@ def download_video(url, format_id, output_path, is_audio, progress_callback):
                 pass
 
     download_format = format_id
-    if not is_audio and "+bestaudio" not in format_id:
+    if not is_audio:
+         # For video, ensure best audio is merged
          download_format = f"{format_id}+bestaudio/best"
 
     ydl_opts = {
