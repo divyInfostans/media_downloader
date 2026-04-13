@@ -14,7 +14,9 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.arthenica.ffmpegkit.FFmpegKit
+import com.arthenica.ffmpegkit.FFmpegKitConfig
 import com.arthenica.ffmpegkit.ReturnCode
+import com.arthenica.ffmpegkit.SessionState
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import kotlinx.serialization.json.*
@@ -37,6 +39,36 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
     init {
         if (!Python.isStarted()) {
             Python.start(AndroidPlatform(application))
+        }
+        setupPythonStdout()
+    }
+
+    private fun setupPythonStdout() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val py = Python.getInstance()
+                val sys = py.getModule("sys")
+                val io = py.getModule("io")
+
+                // We'll use a custom object that calls back to Kotlin for each line
+                val callback = object {
+                    @Suppress("unused")
+                    fun write(data: String) {
+                        if (data.contains("PROGRESS:")) {
+                            val percentStr = data.substringAfter("PROGRESS:").substringBefore("\n").trim()
+                            percentStr.toIntOrNull()?.let { percent ->
+                                _uiState.update { it.copy(downloadProgress = percent / 100f) }
+                            }
+                        }
+                    }
+                    @Suppress("unused")
+                    fun flush() {}
+                }
+
+                sys.put("stdout", callback)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to setup Python stdout redirection", e)
+            }
         }
     }
 
@@ -169,6 +201,10 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
         _uiState.update { it.copy(selectedFormatId = formatId) }
     }
 
+    fun toggleFastMode(enabled: Boolean) {
+        _uiState.update { it.copy(isFastMode = enabled) }
+    }
+
     fun onDownloadClick() {
         val state = _uiState.value
         val url = state.urlInput
@@ -195,10 +231,17 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
 
                 val selectedFormat = state.formats.find { it.id == formatId }
                 val isAudio = selectedFormat?.type == FormatType.AUDIO
-                val isProgressive = selectedFormat?.isProgressive ?: false
+                var isProgressive = selectedFormat?.isProgressive ?: false
                 val resolution = selectedFormat?.title ?: "N/A"
 
-                Log.d(TAG, "Download Triggered - ID: $formatId, Type: ${if(isAudio) "Audio" else "Video"}, Res: $resolution, Progressive: $isProgressive")
+                var fastMode = state.isFastMode
+                if (!isAudio && !isProgressive && !isFFmpegAvailable()) {
+                    Log.w(TAG, "FFmpeg not available, falling back to progressive (fast) mode")
+                    fastMode = true
+                    isProgressive = true
+                }
+
+                Log.d(TAG, "Download Triggered - ID: $formatId, Type: ${if(isAudio) "Audio" else "Video"}, Res: $resolution, Progressive: $isProgressive, FastMode: $fastMode")
 
                 val callback = object {
                     @Suppress("unused")
@@ -207,7 +250,7 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                     }
                 }
 
-                val resultJson = module.callAttr("download_video", url, formatId, cacheDir.absolutePath, isAudio, isProgressive, callback).toString()
+                val resultJson = module.callAttr("download_video", url, formatId, cacheDir.absolutePath, isAudio, isProgressive, fastMode, callback).toString()
                 val result = Json.parseToJsonElement(resultJson).jsonObject
 
                 if (result["status"]?.jsonPrimitive?.content == "dash_info") {
@@ -230,7 +273,9 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                     downloadStream(audioUrl, audioFile)
 
                     _uiState.update { it.copy(downloadSpeed = "Merging Streams...") }
-                    mergeVideoAudio(videoFile.absolutePath, audioFile.absolutePath, outputFile.absolutePath) { success ->
+                    mergeVideoAudio(videoFile.absolutePath, audioFile.absolutePath, outputFile.absolutePath, { progress ->
+                        _uiState.update { it.copy(downloadProgress = progress / 100f) }
+                    }) { success ->
                         if (success) {
                             videoFile.delete()
                             audioFile.delete()
@@ -287,28 +332,54 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
         }
     }
 
-    private fun mergeVideoAudio(videoPath: String, audioPath: String, outputPath: String, onResult: (Boolean) -> Unit) {
+    private fun isFFmpegAvailable(): Boolean {
+        return try {
+            FFmpegKitConfig.getFFmpegVersion()
+            true
+        } catch (e: Throwable) {
+            Log.e(TAG, "FFmpegKit not available", e)
+            false
+        }
+    }
+
+    private fun mergeVideoAudio(videoPath: String, audioPath: String, outputPath: String, onProgress: (Int) -> Unit, onResult: (Boolean) -> Unit) {
         val command = "-y -i \"$videoPath\" -i \"$audioPath\" -c:v copy -c:a aac \"$outputPath\""
 
-        FFmpegKit.executeAsync(command) { session ->
-            if (ReturnCode.isSuccess(session.returnCode)) {
-                Log.d(TAG, "Merge success")
-                onResult(true)
-            } else {
-                Log.e(TAG, "Merge failed with return code ${session.returnCode}. Logs: ${session.allLogsAsString}")
-                // Fallback retry with re-encoding
-                val fallbackCommand = "-y -i \"$videoPath\" -i \"$audioPath\" -c:v libx264 -c:a aac \"$outputPath\""
-                FFmpegKit.executeAsync(fallbackCommand) { fallbackSession ->
-                    if (ReturnCode.isSuccess(fallbackSession.returnCode)) {
-                        Log.d(TAG, "Fallback merge success")
-                        onResult(true)
-                    } else {
-                        Log.e(TAG, "Fallback merge failed with return code ${fallbackSession.returnCode}. Logs: ${fallbackSession.allLogsAsString}")
-                        onResult(false)
-                    }
+        FFmpegKit.executeAsync(command,
+            { session ->
+                if (ReturnCode.isSuccess(session.returnCode)) {
+                    Log.d(TAG, "Merge success")
+                    onProgress(100)
+                    onResult(true)
+                } else if (session.state == SessionState.FAILED) {
+                    Log.e(TAG, "Merge failed with return code ${session.returnCode}. Logs: ${session.allLogsAsString}")
+                    // Fallback retry with re-encoding
+                    val fallbackCommand = "-y -i \"$videoPath\" -i \"$audioPath\" -c:v libx264 -c:a aac \"$outputPath\""
+                    FFmpegKit.executeAsync(fallbackCommand,
+                        { fallbackSession ->
+                            if (ReturnCode.isSuccess(fallbackSession.returnCode)) {
+                                Log.d(TAG, "Fallback merge success")
+                                onProgress(100)
+                                onResult(true)
+                            } else {
+                                Log.e(TAG, "Fallback merge failed with return code ${fallbackSession.returnCode}. Logs: ${fallbackSession.allLogsAsString}")
+                                onResult(false)
+                            }
+                        },
+                        { log -> },
+                        { stats ->
+                            val progress = (stats.time / 1000).toInt() % 100
+                            onProgress(progress)
+                        }
+                    )
                 }
+            },
+            { log -> },
+            { stats ->
+                val progress = (stats.time / 1000).toInt() % 100
+                onProgress(progress)
             }
-        }
+        )
     }
 
     private fun saveToDownloads(context: Context, file: File, isAudio: Boolean): Uri? {

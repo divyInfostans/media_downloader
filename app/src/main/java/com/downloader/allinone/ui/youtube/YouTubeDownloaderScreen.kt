@@ -151,6 +151,40 @@ fun YouTubeDownloaderScreen(
                     }
                 }
 
+                // Optimization Toggle
+                if (uiState.hasVideoInfo && !uiState.isDownloading) {
+                    item {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Fast Mode (MP4 Only)",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "Avoids merging for faster speed",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.Gray
+                                )
+                            }
+                            Switch(
+                                checked = uiState.isFastMode,
+                                onCheckedChange = { viewModel.toggleFastMode(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color(0xF97316),
+                                    checkedTrackColor = Color(0xF97316).copy(alpha = 0.5f)
+                                )
+                            )
+                        }
+                    }
+                }
+
                 // Download Progress
                 if (uiState.isDownloading) {
                     item {

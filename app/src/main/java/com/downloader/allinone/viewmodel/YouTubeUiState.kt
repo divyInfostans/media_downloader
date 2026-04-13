@@ -32,6 +32,7 @@ data class YouTubeUiState(
     val isDownloading: Boolean = false,
     val downloadProgress: Float = 0f,
     val downloadSpeed: String = "",
+    val isFastMode: Boolean = false,
     val errorMessage: String? = null,
     val successMessage: String? = null
 )

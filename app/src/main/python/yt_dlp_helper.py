@@ -89,7 +89,7 @@ def get_video_info(url):
     except Exception as e:
         return json.dumps({"error": str(e), "traceback": traceback.format_exc()})
 
-def download_video(url, format_id, output_path, is_audio, is_progressive, progress_callback):
+def download_video(url, format_id, output_path, is_audio, is_progressive, fast_mode, progress_callback):
     final_file_path = None
 
     def progress_hook(d):
@@ -98,57 +98,46 @@ def download_video(url, format_id, output_path, is_audio, is_progressive, progre
             total = d.get('total_bytes') or d.get('total_bytes_estimate')
             downloaded = d.get('downloaded_bytes', 0)
             if total:
-                percent = (downloaded / total)
-            else:
-                p_str = d.get('_percent_str', '0%').replace('%', '').strip()
-                try:
-                    percent = float(p_str) / 100.0
-                except:
-                    percent = 0.0
+                percent = int(downloaded * 100 / total)
+                print(f"PROGRESS:{percent}")
 
-            speed = d.get('_speed_str', '0B/s')
-            try:
-                progress_callback.onProgress(percent, speed)
-            except:
-                pass
+                # Keep original callback for compatibility or secondary tracking
+                try:
+                    progress_callback.onProgress(downloaded / total, d.get('_speed_str', '0B/s'))
+                except:
+                    pass
         elif d['status'] == 'finished':
             final_file_path = d.get('filename')
+            print("PROGRESS:100")
             try:
                 progress_callback.onProgress(1.0, "Finished")
             except:
                 pass
 
-    # For DASH formats (non-progressive video), we might need to extract the audio URL separately.
-    # However, the user requested to download streams separately and merge in Kotlin.
+    if fast_mode:
+        download_format = "best[ext=mp4]"
+    else:
+        download_format = format_id
 
     ydl_opts = {
-        "format": format_id,
+        "format": download_format,
         "outtmpl": f"{output_path}/%(title)s.%(ext)s",
         "progress_hooks": [progress_hook],
-        "quiet": True,
+        "quiet": False,
         "no_warnings": True,
         "nocheckcertificate": True,
         "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
         "referer": "https://www.youtube.com/",
         "noplaylist": True,
-        "merge_output_format": None,
-        "postprocessors": [],
+        "merge_output_format": "mp4",
     }
 
     try:
-        if not is_audio and not is_progressive:
-            # For DASH video, we need to return both video and audio URLs for Kotlin to download separately
-            # Or we can just let yt-dlp download the video file, and then call it again for audio.
-            # The prompt says: "Download video-only stream, download audio-only stream, merge using FFmpegKit inside Android"
-            # It also suggests: "Extract file paths separately: Return video_url, audio_url..."
-
-            # Re-extract info to get direct URLs
+        if not is_audio and not is_progressive and not fast_mode:
+            # High quality DASH: Return both stream URLs for Kotlin-side merging
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
-
-                # Find the specific video format
                 video_format = next((f for f in info['formats'] if f['format_id'] == format_id), None)
-                # Find best audio format
                 audio_format = next((f for f in info['formats'] if f.get('acodec') != 'none' and f.get('vcodec') == 'none'), None)
 
                 if video_format and audio_format:
@@ -161,7 +150,7 @@ def download_video(url, format_id, output_path, is_audio, is_progressive, progre
                         "audio_ext": audio_format.get("ext", "m4a")
                     })
 
-        # Fallback to standard download for progressive or audio-only
+        # Fast mode, progressive, or audio-only
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
