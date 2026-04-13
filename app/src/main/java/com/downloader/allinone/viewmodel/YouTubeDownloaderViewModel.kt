@@ -48,16 +48,18 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
             try {
                 val py = Python.getInstance()
                 val sys = py.getModule("sys")
-                val io = py.getModule("io")
 
-                // We'll use a custom object that calls back to Kotlin for each line
+                // custom object to capture stdout in real-time
                 val callback = object {
                     @Suppress("unused")
                     fun write(data: String) {
-                        if (data.contains("PROGRESS:")) {
-                            val percentStr = data.substringAfter("PROGRESS:").substringBefore("\n").trim()
-                            percentStr.toIntOrNull()?.let { percent ->
-                                _uiState.update { it.copy(downloadProgress = percent / 100f) }
+                        // Handle potential multiple lines or fragments
+                        data.split("\n").forEach { line ->
+                            if (line.contains("PROGRESS:")) {
+                                val percentStr = line.substringAfter("PROGRESS:").trim()
+                                percentStr.toIntOrNull()?.let { percent ->
+                                    _uiState.update { it.copy(downloadProgress = percent / 100f) }
+                                }
                             }
                         }
                     }
@@ -250,65 +252,57 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                     }
                 }
 
-                val resultJson = module.callAttr("download_video", url, formatId, cacheDir.absolutePath, isAudio, isProgressive, fastMode, callback).toString()
+                val resultJson = module.callAttr("download_video", url, formatId, cacheDir.absolutePath, isAudio, isProgressive, callback).toString()
                 val result = Json.parseToJsonElement(resultJson).jsonObject
 
-                if (result["status"]?.jsonPrimitive?.content == "dash_info") {
-                    // Handle DASH download and merge
-                    val videoUrl = result["video_url"]?.jsonPrimitive?.content ?: return@launch
-                    val audioUrl = result["audio_url"]?.jsonPrimitive?.content ?: return@launch
-                    val title = result["title"]?.jsonPrimitive?.content ?: "video"
-                    val ext = result["ext"]?.jsonPrimitive?.content ?: "mp4"
-                    val audioExt = result["audio_ext"]?.jsonPrimitive?.content ?: "m4a"
-
-                    val moviesDir = getApplication<Application>().getExternalFilesDir(Environment.DIRECTORY_MOVIES) ?: cacheDir
-                    val videoFile = File(moviesDir, "temp_video.$ext")
-                    val audioFile = File(moviesDir, "temp_audio.$audioExt")
-                    val outputFile = File(moviesDir, "$title.$ext")
-
-                    _uiState.update { it.copy(downloadSpeed = "Downloading Video...") }
-                    downloadStream(videoUrl, videoFile)
-
-                    _uiState.update { it.copy(downloadSpeed = "Downloading Audio...") }
-                    downloadStream(audioUrl, audioFile)
-
-                    _uiState.update { it.copy(downloadSpeed = "Merging Streams...") }
-                    mergeVideoAudio(videoFile.absolutePath, audioFile.absolutePath, outputFile.absolutePath, { progress ->
-                        _uiState.update { it.copy(downloadProgress = progress / 100f) }
-                    }) { success ->
-                        if (success) {
-                            videoFile.delete()
-                            audioFile.delete()
-                            val uri = saveToDownloads(getApplication(), outputFile, false)
-                            if (uri != null) {
-                                outputFile.delete()
-                                _uiState.update { it.copy(isDownloading = false, downloadProgress = 1.0f, successMessage = "Download completed: $title") }
-                            } else {
-                                _uiState.update { it.copy(isDownloading = false, errorMessage = "Failed to save merged file") }
-                            }
-                        } else {
-                            _uiState.update { it.copy(isDownloading = false, errorMessage = "Merge failed") }
-                        }
-                    }
-                    return@launch
-                }
-
                 if (result["status"]?.jsonPrimitive?.content == "success") {
-                    val tempFilePathStr = result["file_path"]?.jsonPrimitive?.content
-                    if (tempFilePathStr != null) {
-                        val tempFile = File(tempFilePathStr)
-                        if (tempFile.exists()) {
-                            val uri = saveToDownloads(getApplication(), tempFile, isAudio)
-                            if (uri != null) {
-                                tempFile.delete()
-                                _uiState.update { it.copy(isDownloading = false, downloadProgress = 1.0f, successMessage = "Download completed: ${tempFile.name}") }
+                    val type = result["type"]?.jsonPrimitive?.content ?: "single"
+
+                    if (type == "merge") {
+                        val videoPath = result["video_path"]?.jsonPrimitive?.content ?: return@launch
+                        val audioPath = result["audio_path"]?.jsonPrimitive?.content ?: return@launch
+                        val outputPath = result["output_path"]?.jsonPrimitive?.content ?: return@launch
+
+                        val videoFile = File(videoPath)
+                        val audioFile = File(audioPath)
+                        val outputFile = File(outputPath)
+
+                        _uiState.update { it.copy(downloadSpeed = "Merging Streams...") }
+                        mergeVideoAudio(videoFile.absolutePath, audioFile.absolutePath, outputFile.absolutePath, { progress ->
+                            _uiState.update { it.copy(downloadProgress = progress / 100f) }
+                        }) { success ->
+                            if (success) {
+                                videoFile.delete()
+                                audioFile.delete()
+                                val uri = saveToDownloads(getApplication(), outputFile, false)
+                                if (uri != null) {
+                                    outputFile.delete()
+                                    _uiState.update { it.copy(isDownloading = false, downloadProgress = 1.0f, successMessage = "Download completed: ${outputFile.name}") }
+                                } else {
+                                    _uiState.update { it.copy(isDownloading = false, errorMessage = "Failed to save merged file") }
+                                }
                             } else {
-                                Log.e(TAG, "MediaStore save failed for: ${tempFile.absolutePath}")
-                                _uiState.update { it.copy(isDownloading = false, errorMessage = "Failed to save file to Downloads") }
+                                _uiState.update { it.copy(isDownloading = false, errorMessage = "Merge failed") }
                             }
-                        } else {
-                            Log.e(TAG, "Temp file missing at: $tempFilePathStr")
-                            _uiState.update { it.copy(isDownloading = false, errorMessage = "Download error: File processing failed") }
+                        }
+                    } else {
+                        // Single file path
+                        val tempFilePathStr = result["file_path"]?.jsonPrimitive?.content
+                        if (tempFilePathStr != null) {
+                            val tempFile = File(tempFilePathStr)
+                            if (tempFile.exists()) {
+                                val uri = saveToDownloads(getApplication(), tempFile, isAudio)
+                                if (uri != null) {
+                                    tempFile.delete()
+                                    _uiState.update { it.copy(isDownloading = false, downloadProgress = 1.0f, successMessage = "Download completed: ${tempFile.name}") }
+                                } else {
+                                    Log.e(TAG, "MediaStore save failed for: ${tempFile.absolutePath}")
+                                    _uiState.update { it.copy(isDownloading = false, errorMessage = "Failed to save file to Downloads") }
+                                }
+                            } else {
+                                Log.e(TAG, "Temp file missing at: $tempFilePathStr")
+                                _uiState.update { it.copy(isDownloading = false, errorMessage = "Download error: File processing failed") }
+                            }
                         }
                     }
                 } else {
@@ -324,14 +318,6 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
         }
     }
 
-    private fun downloadStream(url: String, outputFile: File) {
-        URL(url).openStream().use { input ->
-            FileOutputStream(outputFile).use { output ->
-                input.copyTo(output)
-            }
-        }
-    }
-
     private fun isFFmpegAvailable(): Boolean {
         return try {
             FFmpegKitConfig.getFFmpegVersion()
@@ -343,6 +329,12 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
     }
 
     private fun mergeVideoAudio(videoPath: String, audioPath: String, outputPath: String, onProgress: (Int) -> Unit, onResult: (Boolean) -> Unit) {
+        if (!isFFmpegAvailable()) {
+            Log.e(TAG, "FFmpegKit not available for merge")
+            onResult(false)
+            return
+        }
+
         val command = "-y -i \"$videoPath\" -i \"$audioPath\" -c:v copy -c:a aac \"$outputPath\""
 
         FFmpegKit.executeAsync(command,
@@ -351,7 +343,7 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                     Log.d(TAG, "Merge success")
                     onProgress(100)
                     onResult(true)
-                } else if (session.state == SessionState.FAILED) {
+                } else {
                     Log.e(TAG, "Merge failed with return code ${session.returnCode}. Logs: ${session.allLogsAsString}")
                     // Fallback retry with re-encoding
                     val fallbackCommand = "-y -i \"$videoPath\" -i \"$audioPath\" -c:v libx264 -c:a aac \"$outputPath\""
@@ -368,7 +360,8 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                         },
                         { log -> },
                         { stats ->
-                            val progress = (stats.time / 1000).toInt() % 100
+                            val time = stats.time
+                            val progress = (time / 1000).toInt() % 100
                             onProgress(progress)
                         }
                     )
@@ -376,7 +369,8 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
             },
             { log -> },
             { stats ->
-                val progress = (stats.time / 1000).toInt() % 100
+                val time = stats.time
+                val progress = (time / 1000).toInt() % 100
                 onProgress(progress)
             }
         )

@@ -89,38 +89,44 @@ def get_video_info(url):
     except Exception as e:
         return json.dumps({"error": str(e), "traceback": traceback.format_exc()})
 
-def download_video(url, format_id, output_path, is_audio, is_progressive, fast_mode, progress_callback):
-    final_file_path = None
+def get_format(format_id, is_audio, is_progressive):
+    # If it's audio only, just return the format_id
+    if is_audio:
+        return format_id
+
+    # Extract height from format_id (e.g. "137" -> 1080p, "22" -> 720p)
+    # This is a bit simplified, but yt-dlp's format selection logic is flexible.
+    # If the user specifically asked for a progressive format (already has audio), use it.
+    if is_progressive:
+        return format_id
+
+    # If it's a DASH format (video only), we need bestvideo + bestaudio
+    return f"{format_id}+bestaudio/best"
+
+def download_video(url, format_id, output_path, is_audio, is_progressive, progress_callback):
+    final_files = []
 
     def progress_hook(d):
-        nonlocal final_file_path
         if d['status'] == 'downloading':
             total = d.get('total_bytes') or d.get('total_bytes_estimate')
             downloaded = d.get('downloaded_bytes', 0)
             if total:
                 percent = int(downloaded * 100 / total)
                 print(f"PROGRESS:{percent}")
-
-                # Keep original callback for compatibility or secondary tracking
                 try:
                     progress_callback.onProgress(downloaded / total, d.get('_speed_str', '0B/s'))
                 except:
                     pass
         elif d['status'] == 'finished':
-            final_file_path = d.get('filename')
+            final_files.append(d.get('filename'))
             print("PROGRESS:100")
             try:
                 progress_callback.onProgress(1.0, "Finished")
             except:
                 pass
 
-    if fast_mode:
-        download_format = "best[ext=mp4]"
-    else:
-        download_format = format_id
-
     ydl_opts = {
-        "format": download_format,
+        "format": get_format(format_id, is_audio, is_progressive),
         "outtmpl": f"{output_path}/%(title)s.%(ext)s",
         "progress_hooks": [progress_hook],
         "quiet": False,
@@ -129,35 +135,39 @@ def download_video(url, format_id, output_path, is_audio, is_progressive, fast_m
         "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
         "referer": "https://www.youtube.com/",
         "noplaylist": True,
-        "merge_output_format": "mp4",
+        # IMPORTANT: Disable internal merging so we can handle it in Android
+        "merge_output_format": None,
+        "postprocessors": [],
     }
 
     try:
-        if not is_audio and not is_progressive and not fast_mode:
-            # High quality DASH: Return both stream URLs for Kotlin-side merging
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-                video_format = next((f for f in info['formats'] if f['format_id'] == format_id), None)
-                audio_format = next((f for f in info['formats'] if f.get('acodec') != 'none' and f.get('vcodec') == 'none'), None)
-
-                if video_format and audio_format:
-                    return json.dumps({
-                        "status": "dash_info",
-                        "video_url": video_format['url'],
-                        "audio_url": audio_format['url'],
-                        "title": info.get("title", "video"),
-                        "ext": video_format.get("ext", "mp4"),
-                        "audio_ext": audio_format.get("ext", "m4a")
-                    })
-
-        # Fast mode, progressive, or audio-only
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+            info = ydl.extract_info(url, download=True)
 
-        if final_file_path and os.path.exists(final_file_path):
-            return json.dumps({"status": "success", "file_path": final_file_path})
-        else:
-            return json.dumps({"status": "error", "error": "Download finished but file not found"})
+            if is_audio or is_progressive:
+                return json.dumps({
+                    "status": "success",
+                    "type": "single",
+                    "file_path": ydl.prepare_filename(info)
+                })
+            else:
+                # High quality DASH
+                requested_downloads = info.get("requested_downloads", [])
+                if len(requested_downloads) >= 2:
+                    return json.dumps({
+                        "status": "success",
+                        "type": "merge",
+                        "video_path": requested_downloads[0]['filepath'],
+                        "audio_path": requested_downloads[1]['filepath'],
+                        "output_path": os.path.join(output_path, f"{info.get('title', 'video')}.mp4")
+                    })
+                else:
+                    # Fallback if only one file was downloaded (e.g. it was actually progressive)
+                    return json.dumps({
+                        "status": "success",
+                        "type": "single",
+                        "file_path": ydl.prepare_filename(info)
+                    })
 
     except Exception as e:
         return json.dumps({"status": "error", "error": str(e), "traceback": traceback.format_exc()})
