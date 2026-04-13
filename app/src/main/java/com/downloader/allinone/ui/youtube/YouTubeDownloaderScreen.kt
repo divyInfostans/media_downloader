@@ -175,7 +175,7 @@ fun YouTubeDownloaderScreen(
                             }
                             Switch(
                                 checked = uiState.isFastMode,
-                                onCheckedChange = { viewModel.toggleFastMode(it) },
+                                onCheckedChange = { },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = Color(0xF97316),
                                     checkedTrackColor = Color(0xF97316).copy(alpha = 0.5f)
