@@ -335,26 +335,30 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
             return
         }
 
-        val command = "-y -i \"$videoPath\" -i \"$audioPath\" -c:v copy -c:a aac \"$outputPath\""
+        Log.d(TAG, "Starting merge - Video: $videoPath, Audio: $audioPath")
+        Log.d(TAG, "Video exists: ${File(videoPath).exists()}, Audio exists: ${File(audioPath).exists()}")
+
+        // Exact command for best compatibility
+        val command = "-y -i \"$videoPath\" -i \"$audioPath\" -c:v copy -c:a aac -strict experimental \"$outputPath\""
 
         FFmpegKit.executeAsync(command,
             { session ->
                 if (ReturnCode.isSuccess(session.returnCode)) {
-                    Log.d(TAG, "Merge success")
+                    Log.d(TAG, "MERGE SUCCESS")
                     onProgress(100)
                     onResult(true)
                 } else {
-                    Log.e(TAG, "Merge failed with return code ${session.returnCode}. Logs: ${session.allLogsAsString}")
+                    Log.e(TAG, "MERGE FAILED with return code ${session.returnCode}. Logs: ${session.allLogsAsString}")
                     // Fallback retry with re-encoding
-                    val fallbackCommand = "-y -i \"$videoPath\" -i \"$audioPath\" -c:v libx264 -c:a aac \"$outputPath\""
+                    val fallbackCommand = "-y -i \"$videoPath\" -i \"$audioPath\" -c:v libx264 -c:a aac -strict experimental \"$outputPath\""
                     FFmpegKit.executeAsync(fallbackCommand,
                         { fallbackSession ->
                             if (ReturnCode.isSuccess(fallbackSession.returnCode)) {
-                                Log.d(TAG, "Fallback merge success")
+                                Log.d(TAG, "Fallback MERGE SUCCESS")
                                 onProgress(100)
                                 onResult(true)
                             } else {
-                                Log.e(TAG, "Fallback merge failed with return code ${fallbackSession.returnCode}. Logs: ${fallbackSession.allLogsAsString}")
+                                Log.e(TAG, "Fallback MERGE FAILED with return code ${fallbackSession.returnCode}. Logs: ${fallbackSession.allLogsAsString}")
                                 onResult(false)
                             }
                         },

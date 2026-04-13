@@ -153,16 +153,30 @@ def download_video(url, format_id, output_path, is_audio, is_progressive, progre
             else:
                 # High quality DASH
                 requested_downloads = info.get("requested_downloads", [])
-                if len(requested_downloads) >= 2:
+                print("REQUESTED:", requested_downloads)
+
+                video_path = None
+                audio_path = None
+
+                for f in requested_downloads:
+                    if f.get("vcodec") != "none":
+                        video_path = f.get("filepath")
+                    elif f.get("acodec") != "none":
+                        audio_path = f.get("filepath")
+
+                print("VIDEO PATH:", video_path)
+                print("AUDIO PATH:", audio_path)
+
+                if video_path and audio_path:
                     return json.dumps({
                         "status": "success",
                         "type": "merge",
-                        "video_path": requested_downloads[0]['filepath'],
-                        "audio_path": requested_downloads[1]['filepath'],
+                        "video_path": video_path,
+                        "audio_path": audio_path,
                         "output_path": os.path.join(output_path, f"{info.get('title', 'video')}.mp4")
                     })
                 else:
-                    # Fallback if only one file was downloaded (e.g. it was actually progressive)
+                    # Fallback if streams weren't separated as expected
                     return json.dumps({
                         "status": "success",
                         "type": "single",
