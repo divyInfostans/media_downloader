@@ -34,6 +34,43 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
         if (!Python.isStarted()) {
             Python.start(AndroidPlatform(application))
         }
+        viewModelScope.launch(Dispatchers.IO) {
+            ensureFfmpeg()
+        }
+    }
+
+    private fun ensureFfmpeg() {
+        val ffmpegFile = File(getApplication<Application>().filesDir, "ffmpeg")
+        var shouldExtract = !ffmpegFile.exists()
+
+        if (ffmpegFile.exists()) {
+            try {
+                getApplication<Application>().assets.openFd("ffmpeg").use { fd ->
+                    if (ffmpegFile.length() != fd.length) {
+                        shouldExtract = true
+                    }
+                }
+            } catch (e: Exception) {
+                // openFd might fail for compressed assets, fallback to always extract or ignore
+                Log.w(TAG, "Could not check FFmpeg size, skipping redundant extraction if exists")
+            }
+        }
+
+        if (shouldExtract) {
+            try {
+                getApplication<Application>().assets.open("ffmpeg").use { input ->
+                    ffmpegFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                ffmpegFile.setExecutable(true)
+                Log.d(TAG, "FFmpeg extracted to ${ffmpegFile.absolutePath}")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to extract FFmpeg", e)
+            }
+        } else {
+            ffmpegFile.setExecutable(true)
+        }
     }
 
     fun onUrlInputChange(newUrl: String) {
@@ -203,7 +240,8 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                     }
                 }
 
-                val resultJson = module.callAttr("download_video", url, formatId, cacheDir.absolutePath, isAudio, isProgressive, callback).toString()
+                val ffmpegDir = getApplication<Application>().filesDir.absolutePath
+                val resultJson = module.callAttr("download_video", url, formatId, cacheDir.absolutePath, isAudio, isProgressive, ffmpegDir, callback).toString()
                 val result = Json.parseToJsonElement(resultJson).jsonObject
 
                 if (result["status"]?.jsonPrimitive?.content == "success") {

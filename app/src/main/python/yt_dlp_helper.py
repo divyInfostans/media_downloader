@@ -89,7 +89,10 @@ def get_video_info(url):
     except Exception as e:
         return json.dumps({"error": str(e), "traceback": traceback.format_exc()})
 
-def download_video(url, format_id, output_path, is_audio, is_progressive, progress_callback):
+def download_video(url, format_id, output_path, is_audio, is_progressive, ffmpeg_dir, progress_callback):
+    if ffmpeg_dir and ffmpeg_dir not in os.environ["PATH"]:
+        os.environ["PATH"] += os.pathsep + ffmpeg_dir
+
     final_file_path = None
 
     def progress_hook(d):
