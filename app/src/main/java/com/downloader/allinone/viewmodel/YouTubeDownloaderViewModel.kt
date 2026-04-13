@@ -40,7 +40,11 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
     }
 
     private fun ensureFfmpeg() {
-        val ffmpegFile = File(getApplication<Application>().filesDir, "ffmpeg")
+        val binDir = File(getApplication<Application>().filesDir, "bin")
+        if (!binDir.exists()) {
+            binDir.mkdirs()
+        }
+        val ffmpegFile = File(binDir, "ffmpeg")
         var shouldExtract = !ffmpegFile.exists()
 
         if (ffmpegFile.exists()) {
@@ -63,13 +67,13 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                         input.copyTo(output)
                     }
                 }
-                ffmpegFile.setExecutable(true)
+                ffmpegFile.setExecutable(true, false)
                 Log.d(TAG, "FFmpeg extracted to ${ffmpegFile.absolutePath}")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to extract FFmpeg", e)
             }
         } else {
-            ffmpegFile.setExecutable(true)
+            ffmpegFile.setExecutable(true, false)
         }
     }
 
@@ -240,7 +244,7 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                     }
                 }
 
-                val ffmpegDir = getApplication<Application>().filesDir.absolutePath
+                val ffmpegDir = File(getApplication<Application>().filesDir, "bin").absolutePath
                 val resultJson = module.callAttr("download_video", url, formatId, cacheDir.absolutePath, isAudio, isProgressive, ffmpegDir, callback).toString()
                 val result = Json.parseToJsonElement(resultJson).jsonObject
 
