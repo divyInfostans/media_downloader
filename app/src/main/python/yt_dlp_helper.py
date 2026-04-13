@@ -3,25 +3,6 @@ import json
 import os
 import shutil
 import traceback
-import subprocess
-
-def verify_ffmpeg(ffmpeg_dir):
-    ffmpeg_path = os.path.join(ffmpeg_dir, "ffmpeg")
-
-    print("FFMPEG DIR:", ffmpeg_dir)
-    try:
-        print("FILES:", os.listdir(ffmpeg_dir))
-    except Exception as e:
-        print("COULD NOT LIST FILES:", str(e))
-
-    print("EXISTS:", os.path.exists(ffmpeg_path))
-    print("EXECUTABLE:", os.access(ffmpeg_path, os.X_OK))
-
-    try:
-        output = subprocess.check_output([ffmpeg_path, "-version"], stderr=subprocess.STDOUT)
-        print("FFMPEG WORKING:", output.decode()[:100])
-    except Exception as e:
-        print("FFMPEG ERROR:", str(e))
 
 def get_video_info(url):
     ydl_opts = {
@@ -108,8 +89,7 @@ def get_video_info(url):
     except Exception as e:
         return json.dumps({"error": str(e), "traceback": traceback.format_exc()})
 
-def download_video(url, format_id, output_path, is_audio, is_progressive, ffmpeg_dir, progress_callback):
-    verify_ffmpeg(ffmpeg_dir)
+def download_video(url, format_id, output_path, is_audio, is_progressive, progress_callback):
     final_file_path = None
 
     def progress_hook(d):
@@ -138,24 +118,50 @@ def download_video(url, format_id, output_path, is_audio, is_progressive, ffmpeg
             except:
                 pass
 
-    download_format = format_id
-    if not is_audio and not is_progressive:
-        download_format = f"{format_id}+bestaudio"
+    # For DASH formats (non-progressive video), we might need to extract the audio URL separately.
+    # However, the user requested to download streams separately and merge in Kotlin.
 
     ydl_opts = {
-        "format": download_format,
+        "format": format_id,
         "outtmpl": f"{output_path}/%(title)s.%(ext)s",
-        "merge_output_format": "mp4",
-        "ffmpeg_location": ffmpeg_dir,
         "progress_hooks": [progress_hook],
         "quiet": True,
         "no_warnings": True,
         "nocheckcertificate": True,
         "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        "referer": "https://www.youtube.com/"
+        "referer": "https://www.youtube.com/",
+        "noplaylist": True,
+        "merge_output_format": None,
+        "postprocessors": [],
     }
 
     try:
+        if not is_audio and not is_progressive:
+            # For DASH video, we need to return both video and audio URLs for Kotlin to download separately
+            # Or we can just let yt-dlp download the video file, and then call it again for audio.
+            # The prompt says: "Download video-only stream, download audio-only stream, merge using FFmpegKit inside Android"
+            # It also suggests: "Extract file paths separately: Return video_url, audio_url..."
+
+            # Re-extract info to get direct URLs
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+
+                # Find the specific video format
+                video_format = next((f for f in info['formats'] if f['format_id'] == format_id), None)
+                # Find best audio format
+                audio_format = next((f for f in info['formats'] if f.get('acodec') != 'none' and f.get('vcodec') == 'none'), None)
+
+                if video_format and audio_format:
+                    return json.dumps({
+                        "status": "dash_info",
+                        "video_url": video_format['url'],
+                        "audio_url": audio_format['url'],
+                        "title": info.get("title", "video"),
+                        "ext": video_format.get("ext", "mp4"),
+                        "audio_ext": audio_format.get("ext", "m4a")
+                    })
+
+        # Fallback to standard download for progressive or audio-only
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
