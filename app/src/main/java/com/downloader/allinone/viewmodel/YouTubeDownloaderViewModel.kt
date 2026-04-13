@@ -13,6 +13,7 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.arthenica.ffmpegkit.FFmpegKit
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import kotlinx.serialization.json.*
@@ -33,70 +34,6 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
     init {
         if (!Python.isStarted()) {
             Python.start(AndroidPlatform(application))
-        }
-        viewModelScope.launch(Dispatchers.IO) {
-            ensureFfmpeg()
-        }
-    }
-
-    private fun ensureFfmpeg() {
-        val binDir = File(getApplication<Application>().filesDir, "bin")
-        if (!binDir.exists()) {
-            val created = binDir.mkdirs()
-            Log.d(TAG, "Created bin directory: $created")
-        }
-        val ffmpegFile = File(binDir, "ffmpeg")
-        var shouldExtract = !ffmpegFile.exists()
-
-        Log.d(TAG, "FFmpeg target path: ${ffmpegFile.absolutePath}")
-
-        if (ffmpegFile.exists()) {
-            Log.d(TAG, "FFmpeg already exists. Size: ${ffmpegFile.length()}, Executable: ${ffmpegFile.canExecute()}")
-            try {
-                getApplication<Application>().assets.openFd("ffmpeg").use { fd ->
-                    if (ffmpegFile.length() != fd.length) {
-                        Log.d(TAG, "Size mismatch: ${ffmpegFile.length()} vs ${fd.length}. Re-extracting...")
-                        shouldExtract = true
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Could not check FFmpeg size from assets: ${e.message}")
-            }
-        }
-
-        if (shouldExtract) {
-            try {
-                getApplication<Application>().assets.open("ffmpeg").use { input ->
-                    ffmpegFile.outputStream().use { output ->
-                        input.copyTo(output)
-                    }
-                }
-                ffmpegFile.setExecutable(true, false)
-                Log.d(TAG, "FFmpeg extracted. Size: ${ffmpegFile.length()}, Executable: ${ffmpegFile.canExecute()}")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to extract FFmpeg", e)
-            }
-        } else {
-            val setExec = ffmpegFile.setExecutable(true, false)
-            Log.d(TAG, "Ensured executable permission: $setExec, Final canExecute: ${ffmpegFile.canExecute()}")
-        }
-
-        testFfmpegExecution(ffmpegFile)
-    }
-
-    private fun testFfmpegExecution(file: File) {
-        if (!file.exists()) return
-        try {
-            val process = Runtime.getRuntime().exec(arrayOf(file.absolutePath, "-version"))
-            val output = process.inputStream.bufferedReader().readText()
-            val error = process.errorStream.bufferedReader().readText()
-            process.waitFor()
-            Log.d(TAG, "FFmpeg test execution output: $output")
-            if (error.isNotEmpty()) {
-                Log.e(TAG, "FFmpeg test execution error: $error")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "FFmpeg test execution failed", e)
         }
     }
 
@@ -267,20 +204,42 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                     }
                 }
 
-                val ffmpegDir = File(getApplication<Application>().filesDir, "bin").absolutePath
-
-                // Debug: Verify FFmpeg from Python before download
-                val verification = module.callAttr("verify_ffmpeg", ffmpegDir).toString()
-                Log.d(TAG, "Python FFmpeg verification: $verification")
-
-                val resultJson = module.callAttr("download_video", url, formatId, cacheDir.absolutePath, isAudio, isProgressive, ffmpegDir, callback).toString()
+                val resultJson = module.callAttr("download_video", url, formatId, cacheDir.absolutePath, isAudio, isProgressive, callback).toString()
                 val result = Json.parseToJsonElement(resultJson).jsonObject
 
                 if (result["status"]?.jsonPrimitive?.content == "success") {
                     val tempFilePathStr = result["file_path"]?.jsonPrimitive?.content
                     if (tempFilePathStr != null) {
-                        val tempFile = File(tempFilePathStr)
+                        var tempFile = File(tempFilePathStr)
                         if (tempFile.exists()) {
+                            if (!isAudio && !isProgressive) {
+                                // Download audio stream separately and merge
+                                val audioResultJson = module.callAttr("download_video", url, "bestaudio", cacheDir.absolutePath, true, false, callback).toString()
+                                val audioResult = Json.parseToJsonElement(audioResultJson).jsonObject
+                                if (audioResult["status"]?.jsonPrimitive?.content == "success") {
+                                    val audioPathStr = audioResult["file_path"]?.jsonPrimitive?.content
+                                    if (audioPathStr != null) {
+                                        val audioFile = File(audioPathStr)
+                                        val mergedFile = File(cacheDir, "merged_${tempFile.name}")
+
+                                        _uiState.update { it.copy(downloadSpeed = "Merging...") }
+                                        val session = FFmpegKit.execute("-i \"${tempFile.absolutePath}\" -i \"${audioFile.absolutePath}\" -c copy \"${mergedFile.absolutePath}\"")
+                                        if (com.arthenica.ffmpegkit.ReturnCode.isSuccess(session.getReturnCode())) {
+                                            tempFile.delete()
+                                            audioFile.delete()
+                                            tempFile = mergedFile
+                                        } else {
+                                            Log.e(TAG, "FFmpeg merge failed: ${session.getAllLogsAsString()}")
+                                            _uiState.update { it.copy(isDownloading = false, errorMessage = "Merge failed") }
+                                            return@launch
+                                        }
+                                    }
+                                } else {
+                                    _uiState.update { it.copy(isDownloading = false, errorMessage = "Audio download failed for merge") }
+                                    return@launch
+                                }
+                            }
+
                             val uri = saveToDownloads(getApplication(), tempFile, isAudio)
                             if (uri != null) {
                                 tempFile.delete()

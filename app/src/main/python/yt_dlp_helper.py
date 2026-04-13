@@ -3,28 +3,6 @@ import json
 import os
 import shutil
 import traceback
-import subprocess
-
-def verify_ffmpeg(ffmpeg_dir):
-    ffmpeg_path = os.path.join(ffmpeg_dir, "ffmpeg")
-    result = {
-        "ffmpeg_dir": ffmpeg_dir,
-        "ffmpeg_path": ffmpeg_path,
-        "exists": os.path.exists(ffmpeg_path),
-        "executable": os.access(ffmpeg_path, os.X_OK) if os.path.exists(ffmpeg_path) else False,
-        "version_output": None,
-        "error": None
-    }
-
-    if result["exists"] and result["executable"]:
-        try:
-            output = subprocess.check_output([ffmpeg_path, "-version"], stderr=subprocess.STDOUT).decode()
-            result["version_output"] = output.split('\n')[0]
-        except Exception as e:
-            result["error"] = str(e)
-
-    return json.dumps(result)
-
 def get_video_info(url):
     ydl_opts = {
         "quiet": True,
@@ -110,10 +88,7 @@ def get_video_info(url):
     except Exception as e:
         return json.dumps({"error": str(e), "traceback": traceback.format_exc()})
 
-def download_video(url, format_id, output_path, is_audio, is_progressive, ffmpeg_dir, progress_callback):
-    if ffmpeg_dir and ffmpeg_dir not in os.environ["PATH"]:
-        os.environ["PATH"] += os.pathsep + ffmpeg_dir
-
+def download_video(url, format_id, output_path, is_audio, is_progressive, progress_callback):
     final_file_path = None
 
     def progress_hook(d):
@@ -142,26 +117,19 @@ def download_video(url, format_id, output_path, is_audio, is_progressive, ffmpeg
             except:
                 pass
 
-    ffmpeg_available = shutil.which("ffmpeg") is not None
-
+    # If it's a non-progressive video, we only download the video stream here.
+    # The audio stream will be downloaded separately in Kotlin and merged using FFmpegKit.
     download_format = format_id
-    if not is_audio and not is_progressive:
-        if ffmpeg_available:
-            download_format = f"{format_id}+bestaudio"
-        else:
-            return json.dumps({"status": "error", "error": "High quality video merging requires FFmpeg. Please provide binary in assets or select a lower quality (progressive) format."})
 
     ydl_opts = {
         "format": download_format,
         "outtmpl": f"{output_path}/%(title)s.%(ext)s",
-        "merge_output_format": "mp4",
         "progress_hooks": [progress_hook],
         "quiet": True,
         "no_warnings": True,
         "nocheckcertificate": True,
         "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        "referer": "https://www.youtube.com/",
-        "ffmpeg_location": ffmpeg_dir
+        "referer": "https://www.youtube.com/"
     }
 
     try:
