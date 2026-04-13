@@ -3,6 +3,26 @@ import json
 import os
 import shutil
 import traceback
+import subprocess
+
+def verify_ffmpeg(ffmpeg_dir):
+    ffmpeg_path = os.path.join(ffmpeg_dir, "ffmpeg")
+
+    print("FFMPEG DIR:", ffmpeg_dir)
+    try:
+        print("FILES:", os.listdir(ffmpeg_dir))
+    except Exception as e:
+        print("COULD NOT LIST FILES:", str(e))
+
+    print("EXISTS:", os.path.exists(ffmpeg_path))
+    print("EXECUTABLE:", os.access(ffmpeg_path, os.X_OK))
+
+    try:
+        output = subprocess.check_output([ffmpeg_path, "-version"], stderr=subprocess.STDOUT)
+        print("FFMPEG WORKING:", output.decode()[:100])
+    except Exception as e:
+        print("FFMPEG ERROR:", str(e))
+
 def get_video_info(url):
     ydl_opts = {
         "quiet": True,
@@ -88,7 +108,8 @@ def get_video_info(url):
     except Exception as e:
         return json.dumps({"error": str(e), "traceback": traceback.format_exc()})
 
-def download_video(url, format_id, output_path, is_audio, is_progressive, ffmpeg_path, progress_callback):
+def download_video(url, format_id, output_path, is_audio, is_progressive, ffmpeg_dir, progress_callback):
+    verify_ffmpeg(ffmpeg_dir)
     final_file_path = None
 
     def progress_hook(d):
@@ -125,7 +146,7 @@ def download_video(url, format_id, output_path, is_audio, is_progressive, ffmpeg
         "format": download_format,
         "outtmpl": f"{output_path}/%(title)s.%(ext)s",
         "merge_output_format": "mp4",
-        "ffmpeg_location": ffmpeg_path,
+        "ffmpeg_location": ffmpeg_dir,
         "progress_hooks": [progress_hook],
         "quiet": True,
         "no_warnings": True,

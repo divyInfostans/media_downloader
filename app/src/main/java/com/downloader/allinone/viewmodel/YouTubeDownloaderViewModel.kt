@@ -204,7 +204,8 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                 }
 
                 val ffmpegFile = ensureFfmpeg(getApplication())
-                val resultJson = module.callAttr("download_video", url, formatId, cacheDir.absolutePath, isAudio, isProgressive, ffmpegFile.absolutePath, callback).toString()
+                val ffmpegDir = ffmpegFile.parentFile!!.absolutePath
+                val resultJson = module.callAttr("download_video", url, formatId, cacheDir.absolutePath, isAudio, isProgressive, ffmpegDir, callback).toString()
                 val result = Json.parseToJsonElement(resultJson).jsonObject
 
                 if (result["status"]?.jsonPrimitive?.content == "success") {
@@ -254,7 +255,6 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
 
         ffmpegFile.setExecutable(true, false)
         ffmpegFile.setReadable(true, false)
-        ffmpegFile.setWritable(true, true)
 
         try {
             Runtime.getRuntime()
