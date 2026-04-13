@@ -13,6 +13,12 @@ android {
         }
     }
 
+    splits {
+        abi {
+            isEnable = false
+        }
+    }
+
     defaultConfig {
         applicationId = "com.downloader.allinone"
         minSdk = 26
@@ -23,7 +29,16 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
-            abiFilters += listOf("arm64-v8a")
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+        }
+    }
+
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+        jniLibs {
+            useLegacyPackaging = true
         }
     }
 
@@ -46,6 +61,7 @@ android {
 }
 
 dependencies {
+//    implementation("io.github.jonataslaw:ffmpeg-kit-full:6.0")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -67,8 +83,8 @@ dependencies {
 }
 chaquopy {
     defaultConfig {
-        version = "3.12"
-        // buildPython("/usr/bin/python3") // Use default system python for portability
+        version = "3.10"
+        buildPython("C:\\Users\\Bloom Android\\AppData\\Local\\Programs\\Python\\Python310\\python.exe")
         pip {
             install("yt-dlp")
         }
