@@ -13,7 +13,6 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.arthenica.ffmpegkit.FFmpegKit
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import kotlinx.serialization.json.*
@@ -204,42 +203,15 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                     }
                 }
 
-                val resultJson = module.callAttr("download_video", url, formatId, cacheDir.absolutePath, isAudio, isProgressive, callback).toString()
+                val ffmpegFile = ensureFfmpeg(getApplication())
+                val resultJson = module.callAttr("download_video", url, formatId, cacheDir.absolutePath, isAudio, isProgressive, ffmpegFile.absolutePath, callback).toString()
                 val result = Json.parseToJsonElement(resultJson).jsonObject
 
                 if (result["status"]?.jsonPrimitive?.content == "success") {
                     val tempFilePathStr = result["file_path"]?.jsonPrimitive?.content
                     if (tempFilePathStr != null) {
-                        var tempFile = File(tempFilePathStr)
+                        val tempFile = File(tempFilePathStr)
                         if (tempFile.exists()) {
-                            if (!isAudio && !isProgressive) {
-                                // Download audio stream separately and merge
-                                val audioResultJson = module.callAttr("download_video", url, "bestaudio", cacheDir.absolutePath, true, false, callback).toString()
-                                val audioResult = Json.parseToJsonElement(audioResultJson).jsonObject
-                                if (audioResult["status"]?.jsonPrimitive?.content == "success") {
-                                    val audioPathStr = audioResult["file_path"]?.jsonPrimitive?.content
-                                    if (audioPathStr != null) {
-                                        val audioFile = File(audioPathStr)
-                                        val mergedFile = File(cacheDir, "merged_${tempFile.name}")
-
-                                        _uiState.update { it.copy(downloadSpeed = "Merging...") }
-                                        val session = FFmpegKit.execute("-i \"${tempFile.absolutePath}\" -i \"${audioFile.absolutePath}\" -c copy \"${mergedFile.absolutePath}\"")
-                                        if (com.arthenica.ffmpegkit.ReturnCode.isSuccess(session.getReturnCode())) {
-                                            tempFile.delete()
-                                            audioFile.delete()
-                                            tempFile = mergedFile
-                                        } else {
-                                            Log.e(TAG, "FFmpeg merge failed: ${session.getAllLogsAsString()}")
-                                            _uiState.update { it.copy(isDownloading = false, errorMessage = "Merge failed") }
-                                            return@launch
-                                        }
-                                    }
-                                } else {
-                                    _uiState.update { it.copy(isDownloading = false, errorMessage = "Audio download failed for merge") }
-                                    return@launch
-                                }
-                            }
-
                             val uri = saveToDownloads(getApplication(), tempFile, isAudio)
                             if (uri != null) {
                                 tempFile.delete()
@@ -264,6 +236,38 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                 _uiState.update { it.copy(isDownloading = false, errorMessage = "Download failed: ${e.localizedMessage}") }
             }
         }
+    }
+
+    private fun ensureFfmpeg(context: Context): File {
+        val binDir = File(context.filesDir, "bin")
+        if (!binDir.exists()) binDir.mkdirs()
+
+        val ffmpegFile = File(binDir, "ffmpeg")
+
+        if (!ffmpegFile.exists() || ffmpegFile.length() == 0L) {
+            context.assets.open("ffmpeg").use { input ->
+                ffmpegFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+        }
+
+        ffmpegFile.setExecutable(true, false)
+        ffmpegFile.setReadable(true, false)
+        ffmpegFile.setWritable(true, true)
+
+        try {
+            Runtime.getRuntime()
+                .exec(arrayOf("chmod", "755", ffmpegFile.absolutePath))
+                .waitFor()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        Log.d(TAG, "FFMPEG_PATH: ${ffmpegFile.absolutePath}")
+        Log.d(TAG, "FFMPEG_EXEC: ${ffmpegFile.canExecute()}")
+
+        return ffmpegFile
     }
 
     private fun saveToDownloads(context: Context, file: File, isAudio: Boolean): Uri? {

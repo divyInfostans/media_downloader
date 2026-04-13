@@ -88,7 +88,7 @@ def get_video_info(url):
     except Exception as e:
         return json.dumps({"error": str(e), "traceback": traceback.format_exc()})
 
-def download_video(url, format_id, output_path, is_audio, is_progressive, progress_callback):
+def download_video(url, format_id, output_path, is_audio, is_progressive, ffmpeg_path, progress_callback):
     final_file_path = None
 
     def progress_hook(d):
@@ -117,13 +117,15 @@ def download_video(url, format_id, output_path, is_audio, is_progressive, progre
             except:
                 pass
 
-    # If it's a non-progressive video, we only download the video stream here.
-    # The audio stream will be downloaded separately in Kotlin and merged using FFmpegKit.
     download_format = format_id
+    if not is_audio and not is_progressive:
+        download_format = f"{format_id}+bestaudio"
 
     ydl_opts = {
         "format": download_format,
         "outtmpl": f"{output_path}/%(title)s.%(ext)s",
+        "merge_output_format": "mp4",
+        "ffmpeg_location": ffmpeg_path,
         "progress_hooks": [progress_hook],
         "quiet": True,
         "no_warnings": True,
