@@ -42,21 +42,25 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
     private fun ensureFfmpeg() {
         val binDir = File(getApplication<Application>().filesDir, "bin")
         if (!binDir.exists()) {
-            binDir.mkdirs()
+            val created = binDir.mkdirs()
+            Log.d(TAG, "Created bin directory: $created")
         }
         val ffmpegFile = File(binDir, "ffmpeg")
         var shouldExtract = !ffmpegFile.exists()
 
+        Log.d(TAG, "FFmpeg target path: ${ffmpegFile.absolutePath}")
+
         if (ffmpegFile.exists()) {
+            Log.d(TAG, "FFmpeg already exists. Size: ${ffmpegFile.length()}, Executable: ${ffmpegFile.canExecute()}")
             try {
                 getApplication<Application>().assets.openFd("ffmpeg").use { fd ->
                     if (ffmpegFile.length() != fd.length) {
+                        Log.d(TAG, "Size mismatch: ${ffmpegFile.length()} vs ${fd.length}. Re-extracting...")
                         shouldExtract = true
                     }
                 }
             } catch (e: Exception) {
-                // openFd might fail for compressed assets, fallback to always extract or ignore
-                Log.w(TAG, "Could not check FFmpeg size, skipping redundant extraction if exists")
+                Log.w(TAG, "Could not check FFmpeg size from assets: ${e.message}")
             }
         }
 
@@ -68,12 +72,31 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                     }
                 }
                 ffmpegFile.setExecutable(true, false)
-                Log.d(TAG, "FFmpeg extracted to ${ffmpegFile.absolutePath}")
+                Log.d(TAG, "FFmpeg extracted. Size: ${ffmpegFile.length()}, Executable: ${ffmpegFile.canExecute()}")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to extract FFmpeg", e)
             }
         } else {
-            ffmpegFile.setExecutable(true, false)
+            val setExec = ffmpegFile.setExecutable(true, false)
+            Log.d(TAG, "Ensured executable permission: $setExec, Final canExecute: ${ffmpegFile.canExecute()}")
+        }
+
+        testFfmpegExecution(ffmpegFile)
+    }
+
+    private fun testFfmpegExecution(file: File) {
+        if (!file.exists()) return
+        try {
+            val process = Runtime.getRuntime().exec(arrayOf(file.absolutePath, "-version"))
+            val output = process.inputStream.bufferedReader().readText()
+            val error = process.errorStream.bufferedReader().readText()
+            process.waitFor()
+            Log.d(TAG, "FFmpeg test execution output: $output")
+            if (error.isNotEmpty()) {
+                Log.e(TAG, "FFmpeg test execution error: $error")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "FFmpeg test execution failed", e)
         }
     }
 
@@ -245,6 +268,11 @@ class YouTubeDownloaderViewModel(application: Application) : AndroidViewModel(ap
                 }
 
                 val ffmpegDir = File(getApplication<Application>().filesDir, "bin").absolutePath
+
+                // Debug: Verify FFmpeg from Python before download
+                val verification = module.callAttr("verify_ffmpeg", ffmpegDir).toString()
+                Log.d(TAG, "Python FFmpeg verification: $verification")
+
                 val resultJson = module.callAttr("download_video", url, formatId, cacheDir.absolutePath, isAudio, isProgressive, ffmpegDir, callback).toString()
                 val result = Json.parseToJsonElement(resultJson).jsonObject
 

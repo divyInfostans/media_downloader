@@ -3,6 +3,27 @@ import json
 import os
 import shutil
 import traceback
+import subprocess
+
+def verify_ffmpeg(ffmpeg_dir):
+    ffmpeg_path = os.path.join(ffmpeg_dir, "ffmpeg")
+    result = {
+        "ffmpeg_dir": ffmpeg_dir,
+        "ffmpeg_path": ffmpeg_path,
+        "exists": os.path.exists(ffmpeg_path),
+        "executable": os.access(ffmpeg_path, os.X_OK) if os.path.exists(ffmpeg_path) else False,
+        "version_output": None,
+        "error": None
+    }
+
+    if result["exists"] and result["executable"]:
+        try:
+            output = subprocess.check_output([ffmpeg_path, "-version"], stderr=subprocess.STDOUT).decode()
+            result["version_output"] = output.split('\n')[0]
+        except Exception as e:
+            result["error"] = str(e)
+
+    return json.dumps(result)
 
 def get_video_info(url):
     ydl_opts = {
