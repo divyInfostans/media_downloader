@@ -81,26 +81,45 @@ class StatusViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun loadStatuses(treeUri: Uri) {
+        Log.d("STATUS_DEBUG", "Selected URI: $treeUri")
         viewModelScope.launch(Dispatchers.IO) {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             try {
-                val documentFile = DocumentFile.fromTreeUri(getApplication(), treeUri)
-                if (documentFile != null && documentFile.isDirectory) {
-                    val statusItems = documentFile.listFiles()
-                        .filter { file ->
-                            val name = file.name?.lowercase() ?: ""
-                            name.endsWith(".jpg") || name.endsWith(".jpeg") ||
-                            name.endsWith(".png") || name.endsWith(".mp4")
-                        }
-                        .map { file ->
-                            val name = file.name ?: ""
-                            StatusItem(
-                                uri = file.uri,
-                                name = name,
-                                isVideo = name.endsWith(".mp4")
+                val root = DocumentFile.fromTreeUri(getApplication(), treeUri)
+                if (root != null && root.isDirectory) {
+                    val statusFolder = findStatusFolder(root)
+                    if (statusFolder != null) {
+                        Log.d("STATUS_DEBUG", "Status folder found: ${statusFolder.uri}")
+                        val statusItems = statusFolder.listFiles()
+                            .filter { file ->
+                                val name = file.name?.lowercase() ?: ""
+                                val isMedia = name.endsWith(".jpg") || name.endsWith(".jpeg") ||
+                                              name.endsWith(".png") || name.endsWith(".mp4")
+                                if (isMedia) {
+                                    Log.d("STATUS_DEBUG", "Found status: $name")
+                                }
+                                isMedia
+                            }
+                            .sortedByDescending { it.lastModified() }
+                            .map { file ->
+                                val name = file.name ?: ""
+                                StatusItem(
+                                    uri = file.uri,
+                                    name = name,
+                                    isVideo = name.endsWith(".mp4")
+                                )
+                            }
+                        _uiState.update { it.copy(statusList = statusItems, isLoading = false) }
+                    } else {
+                        Log.d("STATUS_DEBUG", "Status folder not found")
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                permissionGranted = false,
+                                errorMessage = "Status folder not found. Please select Android/media folder"
                             )
                         }
-                    _uiState.update { it.copy(statusList = statusItems, isLoading = false) }
+                    }
                 } else {
                     _uiState.update { it.copy(isLoading = false, errorMessage = "Could not access folder") }
                 }
@@ -109,6 +128,27 @@ class StatusViewModel(application: Application) : AndroidViewModel(application) 
                 _uiState.update { it.copy(isLoading = false, errorMessage = e.message) }
             }
         }
+    }
+
+    private fun findStatusFolder(root: DocumentFile): DocumentFile? {
+        // WhatsApp path: com.whatsapp -> WhatsApp -> Media -> .Statuses
+        val whatsappPaths = arrayOf("com.whatsapp", "WhatsApp", "Media", ".Statuses")
+        val whatsappFolder = navigateToFolder(root, whatsappPaths)
+        if (whatsappFolder != null) return whatsappFolder
+
+        // WhatsApp Business path: com.whatsapp.w4b -> WhatsApp Business -> Media -> .Statuses
+        val businessPaths = arrayOf("com.whatsapp.w4b", "WhatsApp Business", "Media", ".Statuses")
+        return navigateToFolder(root, businessPaths)
+    }
+
+    private fun navigateToFolder(root: DocumentFile, paths: Array<String>): DocumentFile? {
+        var current: DocumentFile? = root
+        for (folderName in paths) {
+            current = current?.findFile(folderName)
+            Log.d("STATUS_DEBUG", "Checking folder: $folderName -> Found: ${current != null}")
+            if (current == null) break
+        }
+        return if (current != null && current.isDirectory) current else null
     }
 
     fun downloadStatus(item: StatusItem) {

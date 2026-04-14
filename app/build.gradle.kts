@@ -85,7 +85,7 @@ dependencies {
 chaquopy {
     defaultConfig {
         version = "3.10"
-        buildPython("/home/jules/.pyenv/versions/3.10.20/bin/python3")
+        buildPython("python3.10")
         pip {
             install("yt-dlp")
         }

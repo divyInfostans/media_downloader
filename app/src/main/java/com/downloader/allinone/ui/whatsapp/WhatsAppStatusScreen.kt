@@ -27,8 +27,6 @@ import coil.compose.AsyncImage
 import com.downloader.allinone.model.StatusItem
 import com.downloader.allinone.viewmodel.StatusViewModel
 import com.downloader.allinone.viewmodel.StatusUiState
-import com.downloader.allinone.ui.theme.PrimaryAccent
-import com.downloader.allinone.ui.theme.TextSecondary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -92,7 +90,7 @@ fun WhatsAppStatusScreen(
                 uiState.isLoading -> {
                     CircularProgressIndicator(
                         modifier = Modifier.align(Alignment.Center),
-                        color = PrimaryAccent
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
                 uiState.statusList.isEmpty() -> {
@@ -141,7 +139,7 @@ fun PermissionState(onGrantAccessClick: () -> Unit) {
                 Spacer(modifier = Modifier.height(24.dp))
                 Button(
                     onClick = onGrantAccessClick,
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryAccent),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -236,12 +234,12 @@ fun StatusCard(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(8.dp)
-                    .background(PrimaryAccent, RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
             ) {
                 Icon(
                     imageVector = Icons.Default.Download,
                     contentDescription = "Download",
-                    tint = Color.White,
+                    tint = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier.size(20.dp)
                 )
             }
