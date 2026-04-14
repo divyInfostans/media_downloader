@@ -29,6 +29,10 @@
             android:name=".ui.youtube.YouTubeDownloaderActivity"
             android:exported="false"
             android:theme="@style/Theme.DownloaderAllInOne" />
+        <activity
+            android:name=".ui.whatsapp.WhatsAppStatusActivity"
+            android:exported="false"
+            android:theme="@style/Theme.DownloaderAllInOne" />
     </application>
 
 </manifest>

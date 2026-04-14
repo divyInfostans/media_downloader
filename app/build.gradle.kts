@@ -71,6 +71,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("io.coil-kt:coil-compose:2.5.0")
     implementation(libs.kotlinx.serialization.json)
     testImplementation(libs.junit)
@@ -84,7 +85,7 @@ dependencies {
 chaquopy {
     defaultConfig {
         version = "3.10"
-        buildPython("C:\\Users\\Bloom Android\\AppData\\Local\\Programs\\Python\\Python310\\python.exe")
+        buildPython("python3.10")
         pip {
             install("yt-dlp")
         }

@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
 import android.content.Intent
 import com.downloader.allinone.ui.youtube.YouTubeDownloaderActivity
+import com.downloader.allinone.ui.whatsapp.WhatsAppStatusActivity
 import androidx.compose.ui.tooling.preview.Preview
 import com.downloader.allinone.ui.theme.DownloaderAllInOneTheme
 
@@ -183,7 +184,10 @@ fun DashboardScreenContent(
                             name = "WhatsApp",
                             icon = Icons.Default.Chat,
                             iconColor = Color(0xFF25D366),
-                            onClick = { viewModel?.onServiceClick("WhatsApp") },
+                            onClick = {
+                                viewModel?.onServiceClick("WhatsApp")
+                                context.startActivity(Intent(context, WhatsAppStatusActivity::class.java))
+                            },
                             modifier = Modifier.weight(1f)
                         )
                         ServiceShortcut(
