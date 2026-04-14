@@ -95,83 +95,94 @@ def get_instagram_info(url):
     }
 
     try:
-        info = None
-        media_items = []
+        def get_best_image(item):
+            # 1. image_versions2.candidates
+            candidates = item.get("image_versions2", {}).get("candidates", [])
+            if candidates:
+                best = max(candidates, key=lambda x: x.get("width", 0))
+                return best.get("url")
 
-        # STEP 1: ATTEMPT YT-DLP FOR VIDEOS ONLY
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-                if info and info.get("is_video"):
-                    media_url = info.get("url")
-                    if not media_url and info.get("formats"):
+            # 2. display_resources
+            resources = item.get("display_resources", [])
+            if resources:
+                return resources[-1].get("src")
+
+            # 3. display_url / thumbnail_src
+            return item.get("display_url") or item.get("thumbnail_src")
+
+        media_items = []
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+
+            # Helper to parse single item
+            def parse_item(item):
+                is_video = item.get("is_video") or item.get("vcodec") != "none"
+                if is_video:
+                    media_url = item.get("url")
+                    if not media_url and item.get("formats"):
                         best_f = None
-                        for f in info.get("formats", []):
+                        for f in item.get("formats", []):
                             if f.get("vcodec") != "none" and f.get("acodec") != "none":
                                 if not best_f or (f.get("height") or 0) > (best_f.get("height") or 0):
                                     best_f = f
-                        if best_f:
-                            media_url = best_f.get("url")
+                        media_url = best_f.get("url") if best_f else None
 
                     if media_url:
-                        media_items.append({
+                        print(f"DEBUG: Extracted VIDEO. URL: {media_url[:50]}...")
+                        return {
                             "type": "video",
                             "url": media_url,
-                            "thumbnail": info.get("thumbnail") or info.get("display_url"),
+                            "thumbnail": get_best_image(item),
                             "ext": "mp4"
-                        })
-        except:
-            pass
+                        }
+                else:
+                    img_url = get_best_image(item)
+                    if img_url:
+                        print(f"DEBUG: Extracted IMAGE. URL: {img_url[:50]}...")
+                        return {
+                            "type": "image",
+                            "url": img_url,
+                            "thumbnail": img_url,
+                            "ext": "jpg"
+                        }
+                return None
 
-        # STEP 2: FIX HTML PARSING (PRIMARY SOURCE FOR IMAGES)
+            # Check for carousel (GraphSidecar)
+            entries = info.get("entries")
+            if entries:
+                print(f"DEBUG: Carousel detected. Size: {len(entries)}")
+                for entry in entries:
+                    parsed = parse_item(entry)
+                    if parsed: media_items.append(parsed)
+            else:
+                parsed = parse_item(info)
+                if parsed: media_items.append(parsed)
+
         if not media_items:
+            # FALLBACK TO HTML IF YT-DLP FAILS COMPLETELY
             try:
                 headers = {"User-Agent": "Mozilla/5.0"}
                 req = urllib.request.Request(url, headers=headers)
                 with urllib.request.urlopen(req) as response:
                     html = response.read().decode('utf-8')
-
-                    # STEP 3: PARSE HTML (og:image primary)
                     image_match = re.search(r'<meta property="og:image" content="(.*?)"', html)
                     video_match = re.search(r'<meta property="og:video" content="(.*?)"', html)
 
-                    if image_match:
-                        raw_image_url = image_match.group(1)
-                        print(f"DEBUG: RAW extracted URL: {raw_image_url}")
-
-                        # STEP 4: CLEAN URL (CRITICAL)
-                        cleaned_image_url = raw_image_url.replace("&amp;", "&")
-                        print(f"DEBUG: FINAL cleaned URL: {cleaned_image_url}")
-
-                        # STEP 5: VALIDATE URL
-                        if "cdninstagram" in cleaned_image_url or "fbcdn" in cleaned_image_url:
-                            media_items.append({
-                                "type": "image",
-                                "url": cleaned_image_url,
-                                "thumbnail": cleaned_image_url,
-                                "ext": "jpg"
-                            })
-                        else:
-                            print("DEBUG: Invalid image URL extracted (CDN check failed)")
-
-                    # FALLBACK TO VIDEO IF IMAGE FAILED
-                    if not media_items and video_match:
-                        raw_video_url = video_match.group(1).replace("&amp;", "&")
-                        media_items.append({
-                            "type": "video",
-                            "url": raw_video_url,
-                            "thumbnail": None,
-                            "ext": "mp4"
-                        })
-            except Exception as e:
-                print(f"DEBUG: HTML scraping failed: {str(e)}")
+                    if video_match:
+                        url = video_match.group(1).replace("&amp;", "&")
+                        media_items.append({"type": "video", "url": url, "thumbnail": None, "ext": "mp4"})
+                    elif image_match:
+                        url = image_match.group(1).replace("&amp;", "&")
+                        media_items.append({"type": "image", "url": url, "thumbnail": url, "ext": "jpg"})
+            except:
+                pass
 
         if not media_items:
-            return json.dumps({"error": "Unable to fetch media from this post"})
+            return json.dumps({"error": "Unsupported media"})
 
         return json.dumps({
-            "title": (info.get("title") if info else None) or "Instagram Media",
-            "thumbnail": media_items[0]["thumbnail"],
+            "title": info.get("title") or "Instagram Media",
+            "thumbnail": media_items[0].get("thumbnail"),
             "media_items": media_items
         })
 

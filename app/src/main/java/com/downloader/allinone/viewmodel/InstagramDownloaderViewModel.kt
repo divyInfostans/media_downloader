@@ -135,24 +135,29 @@ class InstagramDownloaderViewModel(application: Application) : AndroidViewModel(
         }
 
         viewModelScope.launch(Dispatchers.IO) {
+            Log.d(TAG, "Starting download for ${state.mediaItems.size} items")
             try {
                 val downloadManager = getApplication<Application>().getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
 
                 state.mediaItems.forEachIndexed { index, item ->
                     val timestamp = System.currentTimeMillis()
-                    val fileName = "instagram_${timestamp}_$index.${item.ext}"
+                    val fileName = if (item.type == "video") "insta_${timestamp}_$index.mp4" else "insta_${timestamp}_$index.jpg"
                     val mimeType = if (item.type == "video") "video/mp4" else "image/jpeg"
+
+                    val subDir = "DownloaderAllInOne"
+                    val fullPath = "$subDir/$fileName"
 
                     val request = DownloadManager.Request(Uri.parse(item.url))
                         .setTitle("Instagram Download")
                         .setDescription("Downloading ${item.type}...")
                         .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                        .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+                        .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fullPath)
                         .setMimeType(mimeType)
                         .addRequestHeader("User-Agent", "Mozilla/5.0")
                         .addRequestHeader("Referer", "https://www.instagram.com/")
 
                     downloadManager.enqueue(request)
+                    Log.d(TAG, "Enqueued download for: $fileName, URL: ${item.url.take(50)}...")
                 }
 
                 _uiState.update {
@@ -160,6 +165,7 @@ class InstagramDownloaderViewModel(application: Application) : AndroidViewModel(
                         successMessage = "Download started. Check notifications for progress."
                     )
                 }
+                Log.d(TAG, "All downloads enqueued successfully")
 
             } catch (e: Exception) {
                 Log.e(TAG, "Download failed", e)

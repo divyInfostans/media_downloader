@@ -141,7 +141,7 @@ fun InstagramPreviewCard(
                                 model = if (item.type == "image") item.url else (item.thumbnail ?: item.url),
                                 contentDescription = null,
                                 modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
+                                contentScale = if (item.type == "image") ContentScale.Fit else ContentScale.Crop
                             )
                             if (item.type == "video") {
                                 Surface(
@@ -171,8 +171,8 @@ fun InstagramPreviewCard(
                     AsyncImage(
                         model = if (item.type == "image") item.url else (item.thumbnail ?: item.url),
                         contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
+                        modifier = Modifier.fillMaxWidth(),
+                        contentScale = if (item.type == "image") ContentScale.FillWidth else ContentScale.Crop
                     )
                     if (item.type == "video") {
                         Surface(
