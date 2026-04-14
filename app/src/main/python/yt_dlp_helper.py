@@ -89,7 +89,6 @@ def get_instagram_info(url):
         "no_warnings": True,
         "nocheckcertificate": True,
         "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "format": "best",
     }
 
     try:
@@ -97,17 +96,34 @@ def get_instagram_info(url):
             info = ydl.extract_info(url, download=False)
 
             def parse_item(item):
-                # Instagram specific: check if it's a video
-                is_video = item.get('vcodec') != 'none' and item.get('vcodec') is not None
-                if not is_video:
-                    # Fallback check
-                    is_video = item.get('ext') == 'mp4' or item.get('acodec') != 'none'
+                # Check for VIDEO first
+                # If "video_url" OR "formats" exist → treat as VIDEO
+                is_video = bool(item.get("video_url") or item.get("formats"))
+
+                media_url = None
+                if is_video:
+                    media_url = item.get("video_url")
+                    if not media_url and item.get("formats"):
+                        # Pick best progressive format if available
+                        best_f = None
+                        for f in item.get("formats", []):
+                            if f.get("vcodec") != "none" and f.get("acodec") != "none":
+                                if not best_f or (f.get("height") or 0) > (best_f.get("height") or 0):
+                                    best_f = f
+                        if best_f:
+                            media_url = best_f.get("url")
+
+                    if not media_url:
+                        media_url = item.get("url")
+                else:
+                    # If "url" OR "display_url" exists → treat as IMAGE
+                    media_url = item.get("url") or item.get("display_url")
 
                 return {
                     "type": "video" if is_video else "image",
-                    "url": item.get("url"),
-                    "thumbnail": item.get("thumbnail"),
-                    "ext": item.get("ext", "mp4" if is_video else "jpg")
+                    "url": media_url,
+                    "thumbnail": item.get("thumbnail") or item.get("display_url"),
+                    "ext": "mp4" if is_video else "jpg"
                 }
 
             media_items = []
@@ -115,9 +131,16 @@ def get_instagram_info(url):
 
             if entries:
                 for entry in entries:
-                    media_items.append(parse_item(entry))
+                    item = parse_item(entry)
+                    if item["url"]:
+                        media_items.append(item)
             else:
-                media_items.append(parse_item(info))
+                item = parse_item(info)
+                if item["url"]:
+                    media_items.append(item)
+
+            if not media_items:
+                return json.dumps({"error": "Unsupported or empty media"})
 
             return json.dumps({
                 "title": info.get("title") or info.get("description") or "Instagram Media",

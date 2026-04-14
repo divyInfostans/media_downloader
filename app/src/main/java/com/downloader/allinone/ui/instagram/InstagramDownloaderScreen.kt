@@ -95,22 +95,6 @@ fun InstagramDownloaderScreen(
                 }
             }
 
-            if (uiState.isDownloading) {
-                item {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        LinearProgressIndicator(
-                            progress = uiState.downloadProgress,
-                            modifier = Modifier.fillMaxWidth(),
-                            color = PrimaryAccent
-                        )
-                        Text(
-                            "Downloading... ${(uiState.downloadProgress * 100).toInt()}%",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = TextSecondary
-                        )
-                    }
-                }
-            }
 
             uiState.successMessage?.let { success ->
                 item {

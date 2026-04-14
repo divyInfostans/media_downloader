@@ -1,7 +1,15 @@
 package com.downloader.allinone.viewmodel
 
+import android.Manifest
 import android.app.Application
+import android.app.DownloadManager
+import android.content.Context
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.chaquo.python.Python
@@ -94,62 +102,46 @@ class InstagramDownloaderViewModel(application: Application) : AndroidViewModel(
 
     fun onDownloadClick() {
         val state = _uiState.value
-        if (state.mediaItems.isEmpty() || state.isDownloading) return
+        if (state.mediaItems.isEmpty()) return
+
+        // Permission check for Android <= 9
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+            val permission = Manifest.permission.WRITE_EXTERNAL_STORAGE
+            if (ContextCompat.checkSelfPermission(getApplication(), permission) != PackageManager.PERMISSION_GRANTED) {
+                _uiState.update { it.copy(errorMessage = "Storage permission required for Android 9 and below") }
+                return
+            }
+        }
 
         viewModelScope.launch(Dispatchers.IO) {
-            _uiState.update { it.copy(isDownloading = true, downloadProgress = 0f, errorMessage = null) }
-
             try {
-                val cacheDir = getApplication<Application>().cacheDir
-                val totalItems = state.mediaItems.size
-                var completedItems = 0
+                val downloadManager = getApplication<Application>().getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
 
                 state.mediaItems.forEachIndexed { index, item ->
-                    val fileName = "instagram_${System.currentTimeMillis()}_$index.${item.ext}"
-                    val file = File(cacheDir, fileName)
+                    val timestamp = System.currentTimeMillis()
+                    val fileName = "instagram_${timestamp}_$index.${item.ext}"
+                    val mimeType = if (item.type == "video") "video/mp4" else "image/jpeg"
 
-                    // Download with progress for each file
-                    downloadFileWithProgress(item.url, file) { itemProgress ->
-                        val overallProgress = (completedItems + itemProgress) / totalItems
-                        _uiState.update { it.copy(downloadProgress = overallProgress) }
-                    }
+                    val request = DownloadManager.Request(Uri.parse(item.url))
+                        .setTitle("Instagram Download")
+                        .setDescription("Downloading ${item.type}...")
+                        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                        .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+                        .setMimeType(mimeType)
+                        .addRequestHeader("User-Agent", "Mozilla/5.0")
 
-                    completedItems++
-                    _uiState.update { it.copy(downloadProgress = completedItems.toFloat() / totalItems) }
+                    downloadManager.enqueue(request)
                 }
 
                 _uiState.update {
                     it.copy(
-                        isDownloading = false,
-                        successMessage = "Downloaded $totalItems items to cache"
+                        successMessage = "Download started. Check notifications for progress."
                     )
                 }
 
             } catch (e: Exception) {
                 Log.e(TAG, "Download failed", e)
-                _uiState.update { it.copy(isDownloading = false, errorMessage = e.message) }
-            }
-        }
-    }
-
-    private fun downloadFileWithProgress(url: String, file: File, onProgress: (Float) -> Unit) {
-        val connection = URL(url).openConnection()
-        connection.setRequestProperty("User-Agent", "Mozilla/5.0")
-        connection.connect()
-
-        val contentLength = connection.contentLengthLong
-        connection.getInputStream().use { input ->
-            file.outputStream().use { output ->
-                val buffer = ByteArray(8192)
-                var bytesRead: Int
-                var totalBytesRead: Long = 0
-                while (input.read(buffer).also { bytesRead = it } != -1) {
-                    output.write(buffer, 0, bytesRead)
-                    totalBytesRead += bytesRead
-                    if (contentLength > 0) {
-                        onProgress(totalBytesRead.toFloat() / contentLength)
-                    }
-                }
+                _uiState.update { it.copy(errorMessage = "Download failed: ${e.message}") }
             }
         }
     }

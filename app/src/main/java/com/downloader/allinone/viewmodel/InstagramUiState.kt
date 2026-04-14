@@ -10,8 +10,6 @@ data class InstagramMediaItem(
 data class InstagramUiState(
     val urlInput: String = "",
     val isLoading: Boolean = false,
-    val isDownloading: Boolean = false,
-    val downloadProgress: Float = 0f,
     val title: String = "",
     val thumbnailUrl: String = "",
     val mediaItems: List<InstagramMediaItem> = emptyList(),
