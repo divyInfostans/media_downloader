@@ -77,15 +77,32 @@ class InstagramDownloaderViewModel(application: Application) : AndroidViewModel(
                     return@launch
                 }
 
-                val mediaItems = info["media_items"]?.jsonArray?.map {
+                val mediaItems = info["media_items"]?.jsonArray?.mapNotNull {
                     val obj = it.jsonObject
+                    val type = obj["type"]?.jsonPrimitive?.content ?: "image"
+                    val url = obj["url"]?.jsonPrimitive?.content ?: ""
+
+                    if (type == "image") {
+                        if (url.isBlank() || !url.startsWith("https://")) {
+                            Log.e(TAG, "Invalid image URL: $url")
+                            return@mapNotNull null
+                        }
+                    }
+
                     InstagramMediaItem(
-                        type = obj["type"]?.jsonPrimitive?.content ?: "image",
-                        url = obj["url"]?.jsonPrimitive?.content ?: "",
+                        type = type,
+                        url = url,
                         thumbnail = obj["thumbnail"]?.jsonPrimitive?.content,
                         ext = obj["ext"]?.jsonPrimitive?.content ?: "mp4"
                     )
                 } ?: emptyList()
+
+                if (mediaItems.isEmpty()) {
+                    _uiState.update {
+                        it.copy(isLoading = false, errorMessage = "Unable to load image")
+                    }
+                    return@launch
+                }
 
                 _uiState.update {
                     it.copy(
@@ -133,6 +150,7 @@ class InstagramDownloaderViewModel(application: Application) : AndroidViewModel(
                         .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
                         .setMimeType(mimeType)
                         .addRequestHeader("User-Agent", "Mozilla/5.0")
+                        .addRequestHeader("Referer", "https://www.instagram.com/")
 
                     downloadManager.enqueue(request)
                 }

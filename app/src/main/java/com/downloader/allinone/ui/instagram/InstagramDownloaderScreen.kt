@@ -138,7 +138,7 @@ fun InstagramPreviewCard(
                                 .background(Color.Black)
                         ) {
                             AsyncImage(
-                                model = item.thumbnail ?: item.url,
+                                model = if (item.type == "image") item.url else (item.thumbnail ?: item.url),
                                 contentDescription = null,
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop
@@ -169,7 +169,7 @@ fun InstagramPreviewCard(
                         .background(Color.Black)
                 ) {
                     AsyncImage(
-                        model = item.thumbnail ?: item.url,
+                        model = if (item.type == "image") item.url else (item.thumbnail ?: item.url),
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
