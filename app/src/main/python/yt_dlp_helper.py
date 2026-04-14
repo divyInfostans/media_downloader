@@ -2,8 +2,6 @@ import yt_dlp
 import json
 import os
 import traceback
-import urllib.request
-import re
 
 
 def get_video_info(url):
@@ -86,114 +84,81 @@ def get_video_info(url):
 
 
 def get_instagram_info(url):
-    # NORMALIZE URL
-    cleaned_url = url.split("?")[0].rstrip("/")
-    api_url = f"{cleaned_url}/?__a=1&__d=dis"
-
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json",
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "nocheckcertificate": True,
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     }
 
     try:
-        req = urllib.request.Request(api_url, headers=headers)
-        with urllib.request.urlopen(req) as response:
-            data = json.loads(response.read().decode())
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
 
-            if "graphql" not in data or "shortcode_media" not in data["graphql"]:
-                raise Exception("JSON structure invalid")
+            def parse_single_item(item):
+                is_video = item.get("is_video", False)
 
-            media = data["graphql"]["shortcode_media"]
+                if is_video:
+                    media_url = item.get("url")
+                    if not media_url and item.get("formats"):
+                        best_f = None
+                        for f in item.get("formats", []):
+                            if f.get("vcodec") != "none" and f.get("acodec") != "none":
+                                if not best_f or (f.get("height") or 0) > (best_f.get("height") or 0):
+                                    best_f = f
+                        if best_f:
+                            media_url = best_f.get("url")
+
+                    if media_url:
+                        return {
+                            "type": "video",
+                            "url": media_url,
+                            "thumbnail": item.get("thumbnail") or item.get("display_url"),
+                            "ext": "mp4"
+                        }
+                else:
+                    # IMAGE FALLBACK
+                    image_url = item.get("display_url")
+                    if not image_url:
+                        image_url = item.get("thumbnail")
+                    if not image_url:
+                        image_url = item.get("url")
+
+                    if image_url:
+                        return {
+                            "type": "image",
+                            "url": image_url,
+                            "thumbnail": image_url,
+                            "ext": "jpg"
+                        }
+                return None
+
             media_items = []
 
-            typename = media.get("__typename")
-
-            # CASE 3: CAROUSEL
-            if typename == "GraphSidecar":
-                edges = media.get("edge_sidecar_to_children", {}).get("edges", [])
-                for edge in edges:
-                    node = edge.get("node", {})
-                    if node.get("is_video"):
-                        media_items.append({
-                            "type": "video",
-                            "url": node.get("video_url"),
-                            "thumbnail": node.get("display_url"),
-                            "ext": "mp4"
-                        })
-                    else:
-                        media_items.append({
-                            "type": "image",
-                            "url": node.get("display_url"),
-                            "thumbnail": node.get("display_url"),
-                            "ext": "jpg"
-                        })
-            # CASE 2: VIDEO
-            elif typename == "GraphVideo":
-                media_items.append({
-                    "type": "video",
-                    "url": media.get("video_url"),
-                    "thumbnail": media.get("display_url"),
-                    "ext": "mp4"
-                })
-            # CASE 1: SINGLE IMAGE
-            elif typename == "GraphImage":
-                media_items.append({
-                    "type": "image",
-                    "url": media.get("display_url"),
-                    "thumbnail": media.get("display_url"),
-                    "ext": "jpg"
-                })
+            if "entries" in info:
+                for entry in info["entries"]:
+                    parsed = parse_single_item(entry)
+                    if parsed:
+                        media_items.append(parsed)
+            else:
+                parsed = parse_single_item(info)
+                if parsed:
+                    media_items.append(parsed)
 
             if not media_items:
-                raise Exception("No media found in JSON")
+                return json.dumps({"error": "Unable to fetch media from this post"})
 
             return json.dumps({
-                "title": media.get("title") or media.get("accessibility_caption") or "Instagram Media",
-                "thumbnail": media.get("display_url"),
+                "title": info.get("title") or info.get("description") or "Instagram Media",
+                "thumbnail": info.get("thumbnail") or (media_items[0]["thumbnail"] if media_items else None),
                 "media_items": media_items
             })
 
     except Exception as e:
-        print(f"DEBUG: JSON fetch failed, trying HTML fallback: {str(e)}")
-        # FALLBACK TO HTML
-        try:
-            req = urllib.request.Request(cleaned_url, headers=headers)
-            with urllib.request.urlopen(req) as response:
-                html = response.read().decode()
-                media_items = []
-
-                # Simple og: parsing
-                video_match = re.search(r'<meta property="og:video" content="([^"]+)"', html)
-                image_match = re.search(r'<meta property="og:image" content="([^"]+)"', html)
-
-                if video_match:
-                    media_items.append({
-                        "type": "video",
-                        "url": video_match.group(1),
-                        "thumbnail": image_match.group(1) if image_match else None,
-                        "ext": "mp4"
-                    })
-                elif image_match:
-                    media_items.append({
-                        "type": "image",
-                        "url": image_match.group(1),
-                        "thumbnail": image_match.group(1),
-                        "ext": "jpg"
-                    })
-
-                if not media_items:
-                    return json.dumps({"error": "Unable to fetch Instagram media"})
-
-                return json.dumps({
-                    "title": "Instagram Media",
-                    "thumbnail": media_items[0]["thumbnail"],
-                    "media_items": media_items
-                })
-        except Exception as e2:
-            return json.dumps({
-                "error": "Unable to fetch Instagram media",
-                "traceback": traceback.format_exc()
-            })
+        return json.dumps({
+            "error": "Unable to fetch media from this post",
+            "traceback": traceback.format_exc()
+        })
 
 
 # ✅ SIMPLE FORMAT (NO MERGE EVER)
