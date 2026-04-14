@@ -74,6 +74,9 @@ dependencies {
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("io.coil-kt:coil-compose:2.5.0")
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.androidx.navigation.compose)
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.ui)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -85,7 +88,7 @@ dependencies {
 chaquopy {
     defaultConfig {
         version = "3.10"
-        buildPython("python3.10")
+        buildPython("python3")
         pip {
             install("yt-dlp")
         }
