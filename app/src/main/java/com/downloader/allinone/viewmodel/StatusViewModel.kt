@@ -153,6 +153,7 @@ class StatusViewModel(application: Application) : AndroidViewModel(application) 
 
     fun downloadStatus(item: StatusItem) {
         viewModelScope.launch(Dispatchers.IO) {
+            _uiState.update { it.copy(downloadingUris = it.downloadingUris + item.uri) }
             try {
                 val context = getApplication<Application>()
                 val resolver = context.contentResolver
@@ -196,6 +197,8 @@ class StatusViewModel(application: Application) : AndroidViewModel(application) 
             } catch (e: Exception) {
                 Log.e(TAG, "Error downloading status", e)
                 _uiState.update { it.copy(errorMessage = "Download failed: ${e.message}") }
+            } finally {
+                _uiState.update { it.copy(downloadingUris = it.downloadingUris - item.uri) }
             }
         }
     }

@@ -1,40 +1,36 @@
 package com.downloader.allinone.ui.whatsapp
 
-import androidx.compose.foundation.background
+import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.downloader.allinone.model.StatusItem
+import com.downloader.allinone.ui.whatsapp.components.*
 import com.downloader.allinone.viewmodel.StatusViewModel
-import com.downloader.allinone.viewmodel.StatusUiState
 
-@OptIn(ExperimentalMaterial3Api::class)
+@ExperimentalMaterial3Api
 @Composable
 fun WhatsAppStatusScreen(
     viewModel: StatusViewModel,
     onBackClick: () -> Unit,
     onGrantAccessClick: () -> Unit
 ) {
+    val navController = rememberNavController()
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -48,6 +44,69 @@ fun WhatsAppStatusScreen(
             viewModel.clearMessages()
         }
     }
+
+    NavHost(navController = navController, startDestination = "status_list") {
+        composable("status_list") {
+            StatusListScreen(
+                viewModel = viewModel,
+                onBackClick = onBackClick,
+                onGrantAccessClick = onGrantAccessClick,
+                onCardClick = { item ->
+                    val encodedUri = Uri.encode(item.uri.toString())
+                    if (item.isVideo) {
+                        navController.navigate("video_player/$encodedUri")
+                    } else {
+                        navController.navigate("image_preview/$encodedUri")
+                    }
+                },
+                snackbarHostState = snackbarHostState
+            )
+        }
+        composable(
+            route = "image_preview/{imageUri}",
+            arguments = listOf(navArgument("imageUri") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val imageUri = backStackEntry.arguments?.getString("imageUri") ?: ""
+            ImagePreviewScreen(
+                imageUri = imageUri,
+                isDownloading = uiState.downloadingUris.contains(Uri.parse(imageUri)),
+                onBackClick = { navController.popBackStack() },
+                onDownloadClick = {
+                    val uri = Uri.parse(imageUri)
+                    val item = uiState.statusList.find { it.uri == uri }
+                    item?.let { viewModel.downloadStatus(it) }
+                }
+            )
+        }
+        composable(
+            route = "video_player/{videoUri}",
+            arguments = listOf(navArgument("videoUri") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val videoUri = backStackEntry.arguments?.getString("videoUri") ?: ""
+            VideoPlayerScreen(
+                videoUri = videoUri,
+                isDownloading = uiState.downloadingUris.contains(Uri.parse(videoUri)),
+                onBackClick = { navController.popBackStack() },
+                onDownloadClick = {
+                    val uri = Uri.parse(videoUri)
+                    val item = uiState.statusList.find { it.uri == uri }
+                    item?.let { viewModel.downloadStatus(it) }
+                }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun StatusListScreen(
+    viewModel: StatusViewModel,
+    onBackClick: () -> Unit,
+    onGrantAccessClick: () -> Unit,
+    onCardClick: (StatusItem) -> Unit,
+    snackbarHostState: SnackbarHostState
+) {
+    val uiState by viewModel.uiState.collectAsState()
 
     Scaffold(
         topBar = {
@@ -99,150 +158,37 @@ fun WhatsAppStatusScreen(
                 else -> {
                     StatusGrid(
                         statusList = uiState.statusList,
-                        onDownloadClick = { viewModel.downloadStatus(it) }
+                        downloadingUris = uiState.downloadingUris,
+                        onDownloadClick = { viewModel.downloadStatus(it) },
+                        onCardClick = onCardClick
                     )
                 }
             }
         }
-    }
-}
-
-@Composable
-fun PermissionState(onGrantAccessClick: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "Permission Required",
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Allow access to WhatsApp Status folder to view and download statuses.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(24.dp))
-                Button(
-                    onClick = onGrantAccessClick,
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Grant Access", fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun EmptyState() {
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(
-            text = "No statuses found",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-            color = MaterialTheme.colorScheme.onBackground
-        )
-        Text(
-            text = "Open WhatsApp and view statuses first",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
     }
 }
 
 @Composable
 fun StatusGrid(
     statusList: List<StatusItem>,
-    onDownloadClick: (StatusItem) -> Unit
+    downloadingUris: Set<Uri>,
+    onDownloadClick: (StatusItem) -> Unit,
+    onCardClick: (StatusItem) -> Unit
 ) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
         contentPadding = PaddingValues(16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = Modifier.fillMaxSize()
     ) {
         items(statusList) { item ->
-            StatusCard(item = item, onDownloadClick = { onDownloadClick(item) })
-        }
-    }
-}
-
-@Composable
-fun StatusCard(
-    item: StatusItem,
-    onDownloadClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .aspectRatio(0.8f)
-            .clip(RoundedCornerShape(16.dp)),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            AsyncImage(
-                model = item.uri,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
+            StatusCard(
+                item = item,
+                isDownloading = downloadingUris.contains(item.uri),
+                onDownloadClick = { onDownloadClick(item) },
+                onCardClick = { onCardClick(item) }
             )
-
-            // Gradient Overlay
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f)),
-                            startY = 300f
-                        )
-                    )
-            )
-
-            if (item.isVideo) {
-                Icon(
-                    imageVector = Icons.Default.PlayArrow,
-                    contentDescription = "Video",
-                    modifier = Modifier
-                        .size(48.dp)
-                        .align(Alignment.Center),
-                    tint = Color.White.copy(alpha = 0.8f)
-                )
-            }
-
-            IconButton(
-                onClick = onDownloadClick,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(8.dp)
-                    .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Download,
-                    contentDescription = "Download",
-                    tint = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
         }
     }
 }
