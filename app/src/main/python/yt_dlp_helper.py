@@ -96,19 +96,30 @@ def get_instagram_info(url):
 
     try:
         def get_best_image(item):
+            print(f"DEBUG: Parsing image for item keys: {list(item.keys())}")
+
             # 1. image_versions2.candidates
             candidates = item.get("image_versions2", {}).get("candidates", [])
             if candidates:
+                print(f"DEBUG: Candidates: {[f'{c.get(\"width\")}x{c.get(\"height\")}' for c in candidates]}")
                 best = max(candidates, key=lambda x: x.get("width", 0))
-                return best.get("url")
+                url = best.get("url")
+                print(f"DEBUG: Selected image_versions2 candidate: {best.get('width')}w, URL: {url[:50]}...")
+                return url
 
             # 2. display_resources
             resources = item.get("display_resources", [])
             if resources:
-                return resources[-1].get("src")
+                print(f"DEBUG: Display resources count: {len(resources)}")
+                best = resources[-1]
+                url = best.get("src")
+                print(f"DEBUG: Selected display_resources: {best.get('config_width')}x{best.get('config_height')}, URL: {url[:50]}...")
+                return url
 
             # 3. display_url / thumbnail_src
-            return item.get("display_url") or item.get("thumbnail_src")
+            url = item.get("display_url") or item.get("thumbnail_src")
+            print(f"DEBUG: Fallback to display_url/thumbnail_src: {url[:50] if url else 'None'}...")
+            return url
 
         media_items = []
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:

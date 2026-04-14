@@ -128,20 +128,22 @@ fun InstagramPreviewCard(
             if (uiState.mediaItems.size > 1) {
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(end = 16.dp)
+                    contentPadding = PaddingValues(end = 16.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     items(uiState.mediaItems) { item ->
                         Box(
                             modifier = Modifier
-                                .size(120.dp)
+                                .width(280.dp)
+                                .wrapContentHeight()
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(Color.Black)
                         ) {
                             AsyncImage(
                                 model = if (item.type == "image") item.url else (item.thumbnail ?: item.url),
                                 contentDescription = null,
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = if (item.type == "image") ContentScale.Fit else ContentScale.Crop
+                                modifier = Modifier.fillMaxWidth().wrapContentHeight(),
+                                contentScale = ContentScale.Fit
                             )
                             if (item.type == "video") {
                                 Surface(
@@ -164,15 +166,15 @@ fun InstagramPreviewCard(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(200.dp)
+                        .wrapContentHeight()
                         .clip(RoundedCornerShape(8.dp))
                         .background(Color.Black)
                 ) {
                     AsyncImage(
                         model = if (item.type == "image") item.url else (item.thumbnail ?: item.url),
                         contentDescription = null,
-                        modifier = Modifier.fillMaxWidth(),
-                        contentScale = if (item.type == "image") ContentScale.FillWidth else ContentScale.Crop
+                        modifier = Modifier.fillMaxWidth().wrapContentHeight(),
+                        contentScale = ContentScale.Fit
                     )
                     if (item.type == "video") {
                         Surface(
