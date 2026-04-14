@@ -95,60 +95,79 @@ def get_instagram_info(url):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
-            def parse_item(item):
-                # Use is_video flag from yt-dlp if available
-                is_video = item.get("is_video") == True
-
-                media_url = None
-                if is_video:
-                    # Try video_url first
-                    media_url = item.get("video_url")
-                    # Then try best progressive format
-                    if not media_url and item.get("formats"):
-                        best_f = None
-                        for f in item.get("formats", []):
-                            if f.get("vcodec") != "none" and f.get("acodec") != "none":
-                                if not best_f or (f.get("height") or 0) > (best_f.get("height") or 0):
-                                    best_f = f
-                        if best_f:
-                            media_url = best_f.get("url")
-                    # Fallback to 'url'
-                    if not media_url:
-                        media_url = item.get("url")
-                else:
-                    # For images, try display_url or url
-                    media_url = item.get("display_url") or item.get("url")
-
-                if not media_url:
-                    return None
-
-                return {
-                    "type": "video" if is_video else "image",
-                    "url": media_url,
-                    "thumbnail": item.get("thumbnail") or item.get("display_url") or media_url,
-                    "ext": "mp4" if is_video else "jpg"
-                }
+            # DEBUG LOGGING
+            print(f"DEBUG: Instagram keys: {list(info.keys())}")
 
             media_items = []
 
-            # 1. CHECK IF CAROUSEL
-            if "entries" in info:
-                for entry in info["entries"]:
-                    parsed = parse_item(entry)
-                    if parsed:
-                        media_items.append(parsed)
-            # 2. SINGLE MEDIA
-            else:
-                parsed = parse_item(info)
-                if parsed:
-                    media_items.append(parsed)
+            # STEP 1: HANDLE CAROUSEL
+            entries = info.get("entries")
+            if entries and len(entries) > 0:
+                print(f"DEBUG: Carousel detected. Size: {len(entries)}")
+                for i, entry in enumerate(entries):
+                    is_video = entry.get("is_video", False)
+                    print(f"DEBUG: Entry {i} is_video={is_video}, keys={list(entry.keys())}")
 
+                    media_url = None
+                    if is_video:
+                        media_url = entry.get("url")
+                        if not media_url and entry.get("formats"):
+                            # Pick best progressive format
+                            for f in entry.get("formats", []):
+                                if f.get("vcodec") != "none" and f.get("acodec") != "none":
+                                    if not media_url or (f.get("height") or 0) > 0: # simplified best logic
+                                        media_url = f.get("url")
+
+                        if media_url:
+                            media_items.append({"type": "video", "url": media_url, "ext": "mp4", "thumbnail": entry.get("thumbnail") or entry.get("display_url")})
+                    else:
+                        media_url = entry.get("display_url")
+                        if not media_url:
+                            media_url = entry.get("url")
+
+                        if media_url:
+                            media_items.append({"type": "image", "url": media_url, "ext": "jpg", "thumbnail": media_url})
+
+                if media_items:
+                    return json.dumps({
+                        "title": info.get("title") or info.get("description") or "Instagram Media",
+                        "thumbnail": info.get("thumbnail") or media_items[0].get("thumbnail"),
+                        "media_items": media_items
+                    })
+
+            # STEP 2: HANDLE SINGLE POST
+            is_video = info.get("is_video", False)
+            print(f"DEBUG: Single post. is_video={is_video}")
+
+            media_url = None
+            if is_video:
+                media_url = info.get("url")
+                if not media_url and info.get("formats"):
+                    for f in info.get("formats", []):
+                        if f.get("vcodec") != "none" and f.get("acodec") != "none":
+                            media_url = f.get("url")
+
+                if media_url:
+                    media_items.append({"type": "video", "url": media_url, "ext": "mp4", "thumbnail": info.get("thumbnail") or info.get("display_url")})
+            else:
+                media_url = info.get("display_url")
+                if not media_url:
+                    media_url = info.get("url")
+
+                if media_url:
+                    media_items.append({"type": "image", "url": media_url, "ext": "jpg", "thumbnail": media_url})
+
+            # STEP 3: FINAL SAFETY FALLBACK
             if not media_items:
-                return json.dumps({"error": "Unable to extract media from this post"})
+                print("DEBUG: Final safety fallback")
+                if info.get("thumbnail"):
+                    media_items.append({"type": "image", "url": info["thumbnail"], "ext": "jpg", "thumbnail": info["thumbnail"]})
+                else:
+                    return json.dumps({"error": "Unable to extract media from this Instagram post"})
 
             return json.dumps({
                 "title": info.get("title") or info.get("description") or "Instagram Media",
-                "thumbnail": info.get("thumbnail") or (media_items[0]["thumbnail"] if media_items else None),
+                "thumbnail": info.get("thumbnail") or media_items[0].get("thumbnail"),
                 "media_items": media_items
             })
 
