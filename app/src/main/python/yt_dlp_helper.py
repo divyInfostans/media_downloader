@@ -83,6 +83,55 @@ def get_video_info(url):
         })
 
 
+def get_instagram_info(url):
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "nocheckcertificate": True,
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "format": "best",
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+
+            def parse_item(item):
+                # Instagram specific: check if it's a video
+                is_video = item.get('vcodec') != 'none' and item.get('vcodec') is not None
+                if not is_video:
+                    # Fallback check
+                    is_video = item.get('ext') == 'mp4' or item.get('acodec') != 'none'
+
+                return {
+                    "type": "video" if is_video else "image",
+                    "url": item.get("url"),
+                    "thumbnail": item.get("thumbnail"),
+                    "ext": item.get("ext", "mp4" if is_video else "jpg")
+                }
+
+            media_items = []
+            entries = info.get("entries")
+
+            if entries:
+                for entry in entries:
+                    media_items.append(parse_item(entry))
+            else:
+                media_items.append(parse_item(info))
+
+            return json.dumps({
+                "title": info.get("title") or info.get("description") or "Instagram Media",
+                "thumbnail": info.get("thumbnail"),
+                "media_items": media_items
+            })
+
+    except Exception as e:
+        return json.dumps({
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        })
+
+
 # ✅ SIMPLE FORMAT (NO MERGE EVER)
 def get_format(format_id, is_audio, is_progressive):
     return format_id
