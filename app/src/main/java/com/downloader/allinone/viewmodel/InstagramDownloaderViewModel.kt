@@ -21,9 +21,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.*
-import java.io.File
-import java.net.URL
-
 class InstagramDownloaderViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(InstagramUiState())

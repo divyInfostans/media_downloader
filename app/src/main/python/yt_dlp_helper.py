@@ -83,6 +83,9 @@ def get_video_info(url):
         })
 
 
+import urllib.request
+import re
+
 def get_instagram_info(url):
     ydl_opts = {
         "quiet": True,
@@ -92,12 +95,19 @@ def get_instagram_info(url):
     }
 
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+        info = None
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+        except:
+            pass
 
+        media_items = []
+
+        # STEP 1: KEEP EXISTING VIDEO FLOW (if yt-dlp worked)
+        if info:
             def parse_single_item(item):
                 is_video = item.get("is_video", False)
-
                 if is_video:
                     media_url = item.get("url")
                     if not media_url and item.get("formats"):
@@ -117,13 +127,7 @@ def get_instagram_info(url):
                             "ext": "mp4"
                         }
                 else:
-                    # IMAGE FALLBACK
-                    image_url = item.get("display_url")
-                    if not image_url:
-                        image_url = item.get("thumbnail")
-                    if not image_url:
-                        image_url = item.get("url")
-
+                    image_url = item.get("display_url") or item.get("thumbnail") or item.get("url")
                     if image_url:
                         return {
                             "type": "image",
@@ -133,26 +137,51 @@ def get_instagram_info(url):
                         }
                 return None
 
-            media_items = []
-
             if "entries" in info:
                 for entry in info["entries"]:
                     parsed = parse_single_item(entry)
-                    if parsed:
-                        media_items.append(parsed)
+                    if parsed: media_items.append(parsed)
             else:
                 parsed = parse_single_item(info)
-                if parsed:
-                    media_items.append(parsed)
+                if parsed: media_items.append(parsed)
 
-            if not media_items:
-                return json.dumps({"error": "Unable to fetch media from this post"})
+        # STEP 2: IMAGE + CAROUSEL FALLBACK (if yt-dlp failed or found nothing)
+        if not media_items:
+            try:
+                headers = {"User-Agent": "Mozilla/5.0"}
+                req = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(req) as response:
+                    html = response.read().decode('utf-8')
 
-            return json.dumps({
-                "title": info.get("title") or info.get("description") or "Instagram Media",
-                "thumbnail": info.get("thumbnail") or (media_items[0]["thumbnail"] if media_items else None),
-                "media_items": media_items
-            })
+                    # STEP 3: PARSE HTML (og:video then og:image)
+                    video_match = re.search(r'<meta property="og:video" content="(.*?)"', html)
+                    image_match = re.search(r'<meta property="og:image" content="(.*?)"', html)
+
+                    if video_match:
+                        media_items.append({
+                            "type": "video",
+                            "url": video_match.group(1),
+                            "thumbnail": image_match.group(1) if image_match else None,
+                            "ext": "mp4"
+                        })
+                    elif image_match:
+                        media_items.append({
+                            "type": "image",
+                            "url": image_match.group(1),
+                            "thumbnail": image_match.group(1),
+                            "ext": "jpg"
+                        })
+            except:
+                pass
+
+        if not media_items:
+            return json.dumps({"error": "Unable to fetch media from this post"})
+
+        return json.dumps({
+            "title": (info.get("title") if info else None) or "Instagram Media",
+            "thumbnail": media_items[0]["thumbnail"],
+            "media_items": media_items
+        })
 
     except Exception as e:
         return json.dumps({
