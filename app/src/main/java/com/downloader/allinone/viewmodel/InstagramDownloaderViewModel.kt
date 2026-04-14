@@ -57,7 +57,14 @@ class InstagramDownloaderViewModel(application: Application) : AndroidViewModel(
 
     fun fetchMetadata(url: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null, isPreviewReady = false) }
+            _uiState.update {
+                it.copy(
+                    isLoading = true,
+                    errorMessage = null,
+                    successMessage = null,
+                    isPreviewReady = false
+                )
+            }
 
             try {
                 val py = Python.getInstance()
