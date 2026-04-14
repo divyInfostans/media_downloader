@@ -92,47 +92,80 @@ def get_instagram_info(url):
         "no_warnings": True,
         "nocheckcertificate": True,
         "user_agent": "Mozilla/5.0",
-        "format": "best",
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
-            # DEBUG LOGGING (Requirement 9)
-            print(f"DEBUG: yt-dlp JSON: {json.dumps(info)[:1000]}...")
+            # 4. DEBUG LOGGING (MANDATORY)
+            print(f"DEBUG: yt-dlp JSON Response: {json.dumps(info)}")
 
             media_items = []
 
             def parse_item(item):
-                # Detect type (image/video)
-                # yt-dlp uses 'vcodec' or 'ext' or 'is_video'
-                is_video = item.get("is_video") or item.get("vcodec") != "none"
-                media_url = item.get("url")
+                media_url = None
+                source = "none"
 
-                if not media_url and item.get("formats"):
-                    media_url = item["formats"][-1].get("url")
+                # CASE: url exists
+                if item.get("url"):
+                    media_url = item.get("url")
+                    source = "url"
+
+                # CASE: formats exists
+                elif item.get("formats"):
+                    formats = item.get("formats")
+                    # Prefer width, fallback to filesize
+                    best_f = None
+                    for f in formats:
+                        if not best_f:
+                            best_f = f
+                            continue
+
+                        f_w = f.get("width") or 0
+                        b_w = best_f.get("width") or 0
+
+                        if f_w > b_w:
+                            best_f = f
+                        elif f_w == b_w:
+                            f_s = f.get("filesize") or f.get("filesize_approx") or 0
+                            b_s = best_f.get("filesize") or best_f.get("filesize_approx") or 0
+                            if f_s > b_s:
+                                best_f = f
+
+                    if best_f:
+                        media_url = best_f.get("url")
+                        source = "formats"
 
                 if media_url:
-                    print(f"DEBUG: Extracted URL: {media_url[:50]}..., Type: {'video' if is_video else 'image'}")
+                    # 5. DATA MODEL FIX (Type detection)
+                    ext = item.get("ext", "").lower()
+                    is_image = ext in ["jpg", "jpeg", "png", "webp"] or item.get("vcodec") == "none"
+                    is_video = ext == "mp4" or (item.get("vcodec") != "none" and item.get("vcodec") is not None)
+
+                    final_type = "video" if is_video and not is_image else "image"
+
+                    print(f"DEBUG: Extraction Strategy: {source} used. Final URL: {media_url[:50]}..., Type: {final_type}")
+
                     return {
-                        "type": "video" if is_video else "image",
+                        "type": final_type,
                         "url": media_url,
                         "thumbnail": item.get("thumbnail") or item.get("display_url"),
-                        "duration": item.get("duration"),
-                        "ext": "mp4" if is_video else "jpg"
+                        "ext": ext or ("mp4" if final_type == "video" else "jpg")
                     }
                 return None
 
-            # 1. HANDLE CAROUSEL
+            # CASE 1: Carousel post
             if "entries" in info:
-                print(f"DEBUG: Carousel detected. Entries: {len(info['entries'])}")
+                print(f"DEBUG: CASE 1: Carousel detected. Entries: {len(info['entries'])}")
                 for entry in info["entries"]:
                     parsed = parse_item(entry)
                     if parsed:
                         media_items.append(parsed)
-            # 2. HANDLE SINGLE POST
+
+            # CASE 2: Single post
             else:
+                print("DEBUG: CASE 2: Single post detected.")
                 parsed = parse_item(info)
                 if parsed:
                     media_items.append(parsed)
