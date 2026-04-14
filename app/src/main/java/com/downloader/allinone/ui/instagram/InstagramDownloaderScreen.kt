@@ -26,6 +26,7 @@ import com.downloader.allinone.ui.theme.PrimaryAccent
 import com.downloader.allinone.ui.theme.TextSecondary
 import com.downloader.allinone.viewmodel.InstagramDownloaderViewModel
 import com.downloader.allinone.viewmodel.InstagramUiState
+import com.downloader.allinone.viewmodel.MediaType
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -140,12 +141,12 @@ fun InstagramPreviewCard(
                                 .background(Color.Black)
                         ) {
                             AsyncImage(
-                                model = if (item.type == "image") item.url else (item.thumbnail ?: item.url),
+                                model = if (item.type == MediaType.IMAGE) item.url else (item.thumbnail ?: item.url),
                                 contentDescription = null,
                                 modifier = Modifier.fillMaxWidth().wrapContentHeight(),
-                                contentScale = ContentScale.Fit
+                                contentScale = if (item.type == MediaType.IMAGE) ContentScale.Fit else ContentScale.Crop
                             )
-                            if (item.type == "video") {
+                            if (item.type == MediaType.VIDEO) {
                                 Surface(
                                     modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp),
                                     color = Color.Black.copy(alpha = 0.6f),
@@ -171,12 +172,12 @@ fun InstagramPreviewCard(
                         .background(Color.Black)
                 ) {
                     AsyncImage(
-                        model = if (item.type == "image") item.url else (item.thumbnail ?: item.url),
+                        model = if (item.type == MediaType.IMAGE) item.url else (item.thumbnail ?: item.url),
                         contentDescription = null,
                         modifier = Modifier.fillMaxWidth().wrapContentHeight(),
                         contentScale = ContentScale.Fit
                     )
-                    if (item.type == "video") {
+                    if (item.type == MediaType.VIDEO) {
                         Surface(
                             modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
                             color = Color.Black.copy(alpha = 0.6f),

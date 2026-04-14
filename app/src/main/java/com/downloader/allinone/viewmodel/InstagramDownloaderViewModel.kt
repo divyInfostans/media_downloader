@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import kotlinx.serialization.json.*
 class InstagramDownloaderViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -68,31 +69,34 @@ class InstagramDownloaderViewModel(application: Application) : AndroidViewModel(
                 val module = py.getModule("yt_dlp_helper")
                 val jsonStr = module.callAttr("get_instagram_info", url).toString()
 
-                val info = Json.parseToJsonElement(jsonStr).jsonObject
+                // 1. LOG FULL yt-dlp RESPONSE (MANDATORY)
+                Log.d("INSTA_RAW", jsonStr)
 
-                if (info.containsKey("error")) {
+                val json = JSONObject(jsonStr)
+
+                if (json.has("error")) {
                     _uiState.update {
-                        it.copy(isLoading = false, errorMessage = info["error"]?.jsonPrimitive?.content)
+                        it.copy(isLoading = false, errorMessage = json.optString("error"))
                     }
                     return@launch
                 }
 
-                val mediaItems = info["media_items"]?.jsonArray?.mapNotNull {
-                    val obj = it.jsonObject
-                    InstagramMediaItem(
-                        type = obj["type"]?.jsonPrimitive?.content ?: "image",
-                        url = obj["url"]?.jsonPrimitive?.content ?: "",
-                        thumbnail = obj["thumbnail"]?.jsonPrimitive?.content,
-                        ext = obj["ext"]?.jsonPrimitive?.content ?: "mp4"
-                    )
-                } ?: emptyList()
+                // 2. REWRITE EXTRACTION LOGIC FROM SCRATCH
+                val mediaItems = extractMedia(json)
+
+                if (mediaItems.isEmpty()) {
+                    _uiState.update {
+                        it.copy(isLoading = false, errorMessage = "Unable to fetch media")
+                    }
+                    return@launch
+                }
 
                 _uiState.update {
                     it.copy(
                         isLoading = false,
                         isPreviewReady = true,
-                        title = info["title"]?.jsonPrimitive?.content ?: "Instagram Media",
-                        thumbnailUrl = info["thumbnail"]?.jsonPrimitive?.content ?: "",
+                        title = json.optString("title", "Instagram Media"),
+                        thumbnailUrl = json.optString("thumbnail", ""),
                         mediaItems = mediaItems
                     )
                 }
@@ -102,6 +106,97 @@ class InstagramDownloaderViewModel(application: Application) : AndroidViewModel(
                 _uiState.update { it.copy(isLoading = false, errorMessage = e.message) }
             }
         }
+    }
+
+    private fun extractMedia(json: JSONObject): List<InstagramMediaItem> {
+        val result = mutableListOf<InstagramMediaItem>()
+
+        // CASE 1: Carousel
+        if (json.has("entries")) {
+            val entries = json.getJSONArray("entries")
+
+            for (i in 0 until entries.length()) {
+                val entry = entries.getJSONObject(i)
+
+                val url = extractUrlFromObject(entry)
+                if (url != null) {
+                    result.add(buildMedia(entry, url))
+                }
+            }
+            return result
+        }
+
+        // CASE 2: Single post
+        val url = extractUrlFromObject(json)
+        if (url != null) {
+            result.add(buildMedia(json, url))
+        }
+
+        return result
+    }
+
+    private fun extractUrlFromObject(obj: JSONObject): String? {
+        // PRIORITY 1: direct url
+        if (obj.has("url")) {
+            val url = obj.optString("url")
+            if (url.isNotEmpty()) return url
+        }
+
+        // PRIORITY 2: formats (CRITICAL FOR IMAGES)
+        if (obj.has("formats")) {
+            val formats = obj.getJSONArray("formats")
+
+            var bestUrl: String? = null
+            var bestWidth = 0
+
+            for (i in 0 until formats.length()) {
+                val format = formats.getJSONObject(i)
+
+                val url = format.optString("url")
+                val width = format.optInt("width", 0)
+                val ext = format.optString("ext")
+
+                if (url.isNullOrEmpty()) continue
+
+                // ACCEPT BOTH IMAGE + VIDEO
+                if (ext in listOf("jpg", "jpeg", "png", "webp", "mp4")) {
+                    if (width >= bestWidth) {
+                        bestWidth = width
+                        bestUrl = url
+                    }
+                }
+            }
+
+            if (bestUrl != null) return bestUrl
+        }
+
+        return null
+    }
+
+    private fun buildMedia(obj: JSONObject, url: String): InstagramMediaItem {
+        // Fix: Remove query parameters before checking extension
+        val urlWithoutParams = url.substringBefore("?")
+        val ext = urlWithoutParams.substringAfterLast(".", "")
+
+        val type = when (ext.lowercase()) {
+            "mp4" -> MediaType.VIDEO
+            "jpg", "jpeg", "png", "webp" -> MediaType.IMAGE
+            else -> {
+                // Second check based on yt-dlp metadata
+                if (obj.optBoolean("is_video") || obj.optString("vcodec") != "none") {
+                    MediaType.VIDEO
+                } else {
+                    MediaType.IMAGE
+                }
+            }
+        }
+
+        return InstagramMediaItem(
+            url = url,
+            type = type,
+            thumbnail = obj.optString("thumbnail") ?: obj.optString("display_url"),
+            ext = if (type == MediaType.VIDEO) "mp4" else "jpg"
+        )
     }
 
     fun onDownloadClick() {
@@ -124,8 +219,9 @@ class InstagramDownloaderViewModel(application: Application) : AndroidViewModel(
 
                 state.mediaItems.forEachIndexed { index, item ->
                     val timestamp = System.currentTimeMillis()
-                    val fileName = if (item.type == "video") "insta_${timestamp}_$index.mp4" else "insta_${timestamp}_$index.jpg"
-                    val mimeType = if (item.type == "video") "video/mp4" else "image/jpeg"
+                    // Fix: Compare enum to enum, not string
+                    val fileName = if (item.type == MediaType.VIDEO) "insta_${timestamp}_$index.mp4" else "insta_${timestamp}_$index.jpg"
+                    val mimeType = if (item.type == MediaType.VIDEO) "video/mp4" else "image/jpeg"
 
                     val subDir = "DownloaderAllInOne"
                     val fullPath = "$subDir/$fileName"

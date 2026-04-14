@@ -1,10 +1,14 @@
 package com.downloader.allinone.viewmodel
 
+enum class MediaType {
+    IMAGE, VIDEO
+}
+
 data class InstagramMediaItem(
-    val type: String, // "image" or "video"
+    val type: MediaType,
     val url: String,
-    val thumbnail: String?,
-    val ext: String
+    val thumbnail: String? = null,
+    val ext: String = "jpg"
 )
 
 data class InstagramUiState(
