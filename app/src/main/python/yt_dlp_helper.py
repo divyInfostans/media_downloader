@@ -86,6 +86,15 @@ def get_video_info(url):
 import urllib.request
 import re
 
+def clean_url(url):
+    if not url:
+        return url
+    return (
+        url.replace("&amp;", "&")
+           .replace("\\u0026", "&")
+           .replace("\\/", "/")
+    )
+
 def get_instagram_info(url):
     ydl_opts = {
         'quiet': True,
@@ -127,7 +136,9 @@ def get_instagram_info(url):
                 display_urls = re.findall(r'"display_url":"(.*?)"', html)
                 if display_urls:
                     for d_url in list(dict.fromkeys(display_urls)): # unique urls
-                        media_list.append({"url": d_url.replace("\\u0026", "&"), "ext": "jpg"})
+                        cleaned = clean_url(d_url)
+                        print("FINAL_URL (carousel):", cleaned)
+                        media_list.append({"url": cleaned, "ext": "jpg"})
 
                 # 2. Extract og: tags for single post
                 og_image = re.search(r'<meta property="og:image" content="(.*?)"', html)
@@ -138,9 +149,13 @@ def get_instagram_info(url):
                 if not media_list:
                     if og_video:
                         final_type = "video"
-                        media_list.append({"url": og_video.group(1), "ext": "mp4"})
+                        cleaned = clean_url(og_video.group(1))
+                        print("FINAL_URL (video):", cleaned)
+                        media_list.append({"url": cleaned, "ext": "mp4"})
                     elif og_image:
-                        media_list.append({"url": og_image.group(1), "ext": "jpg"})
+                        cleaned = clean_url(og_image.group(1))
+                        print("FINAL_URL (image):", cleaned)
+                        media_list.append({"url": cleaned, "ext": "jpg"})
 
                 if not media_list:
                     return json.dumps({"error": "Unable to fetch Instagram media"})
@@ -160,6 +175,7 @@ def get_instagram_info(url):
 
 def download_instagram_image(url, output_path):
     try:
+        url = clean_url(url)
         urllib.request.urlretrieve(url, output_path)
         return json.dumps({"status": "success", "file_path": output_path})
     except Exception as e:
