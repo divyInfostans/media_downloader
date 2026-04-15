@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import java.io.File
 class InstagramDownloaderViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(InstagramUiState())
@@ -68,7 +69,6 @@ class InstagramDownloaderViewModel(application: Application) : AndroidViewModel(
                 val module = py.getModule("yt_dlp_helper")
                 val jsonStr = module.callAttr("get_instagram_info", url).toString()
 
-                // 1. LOG FULL yt-dlp RESPONSE (MANDATORY)
                 Log.d("INSTA_RAW", jsonStr)
 
                 val json = JSONObject(jsonStr)
@@ -80,8 +80,23 @@ class InstagramDownloaderViewModel(application: Application) : AndroidViewModel(
                     return@launch
                 }
 
-                // 2. REWRITE EXTRACTION LOGIC FROM SCRATCH
-                val mediaItems = extractMedia(json)
+                val isYtdlp = json.getBoolean("is_ytdlp")
+                val mediaItems = if (isYtdlp) {
+                    val rawInfo = json.getJSONObject("raw")
+                    extractMedia(rawInfo)
+                } else {
+                    val mediaArray = json.getJSONArray("media")
+                    val list = mutableListOf<InstagramMediaItem>()
+                    for (i in 0 until mediaArray.length()) {
+                        val mediaObj = mediaArray.getJSONObject(i)
+                        list.add(InstagramMediaItem(
+                            type = if (json.getString("type") == "video") MediaType.VIDEO else MediaType.IMAGE,
+                            url = mediaObj.getString("url"),
+                            ext = mediaObj.getString("ext")
+                        ))
+                    }
+                    list
+                }
 
                 if (mediaItems.isEmpty()) {
                     _uiState.update {
@@ -94,7 +109,7 @@ class InstagramDownloaderViewModel(application: Application) : AndroidViewModel(
                     it.copy(
                         isLoading = false,
                         isPreviewReady = true,
-                        title = json.optString("title", "Instagram Media"),
+                        title = if (isYtdlp) json.getJSONObject("raw").optString("title", "Instagram Media") else json.optString("title", "Instagram Media"),
                         thumbnailUrl = json.optString("thumbnail", ""),
                         mediaItems = mediaItems
                     )
@@ -214,36 +229,47 @@ class InstagramDownloaderViewModel(application: Application) : AndroidViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             Log.d(TAG, "Starting download for ${state.mediaItems.size} items")
             try {
+                val py = Python.getInstance()
+                val module = py.getModule("yt_dlp_helper")
                 val downloadManager = getApplication<Application>().getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
 
                 state.mediaItems.forEachIndexed { index, item ->
                     val timestamp = System.currentTimeMillis()
-                    // Fix: Compare enum to enum, not string
                     val fileName = if (item.type == MediaType.VIDEO) "insta_${timestamp}_$index.mp4" else "insta_${timestamp}_$index.jpg"
-                    val mimeType = if (item.type == MediaType.VIDEO) "video/mp4" else "image/jpeg"
 
                     val subDir = "DownloaderAllInOne"
                     val fullPath = "$subDir/$fileName"
 
-                    val request = DownloadManager.Request(Uri.parse(item.url))
-                        .setTitle("Instagram Download")
-                        .setDescription("Downloading ${item.type}...")
-                        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                        .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fullPath)
-                        .setMimeType(mimeType)
-                        .addRequestHeader("User-Agent", "Mozilla/5.0")
-                        .addRequestHeader("Referer", "https://www.instagram.com/")
+                    if (item.type == MediaType.IMAGE) {
+                        // Use direct download for images via Python or specialized logic
+                        val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                        val appDir = File(downloadsDir, subDir)
+                        if (!appDir.exists()) appDir.mkdirs()
+                        val destinationFile = File(appDir, fileName)
 
-                    downloadManager.enqueue(request)
-                    Log.d(TAG, "Enqueued download for: $fileName, URL: ${item.url.take(50)}...")
+                        module.callAttr("download_instagram_image", item.url, destinationFile.absolutePath)
+                        Log.d(TAG, "Image downloaded via urllib: $fileName")
+                    } else {
+                        // Use DownloadManager for videos (already working)
+                        val request = DownloadManager.Request(Uri.parse(item.url))
+                            .setTitle("Instagram Download")
+                            .setDescription("Downloading ${item.type}...")
+                            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fullPath)
+                            .setMimeType("video/mp4")
+                            .addRequestHeader("User-Agent", "Mozilla/5.0")
+                            .addRequestHeader("Referer", "https://www.instagram.com/")
+
+                        downloadManager.enqueue(request)
+                        Log.d(TAG, "Video enqueued via DownloadManager: $fileName")
+                    }
                 }
 
                 _uiState.update {
                     it.copy(
-                        successMessage = "Download started. Check notifications for progress."
+                        successMessage = "Download completed/started. Check Downloads folder."
                     )
                 }
-                Log.d(TAG, "All downloads enqueued successfully")
 
             } catch (e: Exception) {
                 Log.e(TAG, "Download failed", e)

@@ -95,38 +95,75 @@ def get_instagram_info(url):
     }
 
     try:
+        # STEP 1: Try yt-dlp
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
-            if info is None:
-                raise Exception("Empty response")
-
-            print("INSTA_FINAL:", list(info.keys()))
-            return json.dumps(info)
+            if info and (info.get("is_video") or info.get("formats")):
+                print("INSTA_DEBUG: yt-dlp success for video")
+                return json.dumps({
+                    "is_ytdlp": True,
+                    "raw": info
+                })
+            else:
+                raise Exception("There is no video in this post")
 
     except Exception as e:
         error_msg = str(e)
-        print("INSTA_ERROR:", error_msg)
+        print("INSTA_ERROR (yt-dlp):", error_msg)
 
-        if "There is no video in this post" in error_msg:
-            print("DEBUG: Retrying with generic extractor fallback")
-            try:
-                ydl_opts_fallback = {
-                    'quiet': True,
-                    'no_warnings': True,
-                    'force_generic_extractor': True,
-                    'skip_download': True,
-                }
-                with yt_dlp.YoutubeDL(ydl_opts_fallback) as ydl:
-                    info = ydl.extract_info(url, download=False)
-                    if info:
-                        print("INSTA_FINAL (Fallback):", list(info.keys()))
-                        return json.dumps(info)
-            except Exception as e2:
-                print("INSTA_ERROR (Fallback):", str(e2))
-                return json.dumps({"error": str(e2)})
+        # STEP 2: FALLBACK to HTML scraping
+        print("INSTA_DEBUG: Falling back to HTML scraping")
+        try:
+            headers = { "User-Agent": "Mozilla/5.0" }
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req) as response:
+                html = response.read().decode('utf-8')
 
-        return json.dumps({"error": error_msg})
+                # 1. Extract Media
+                media_list = []
+
+                # Try Carousel first (JSON-like scraping from HTML)
+                display_urls = re.findall(r'"display_url":"(.*?)"', html)
+                if display_urls:
+                    for d_url in list(dict.fromkeys(display_urls)): # unique urls
+                        media_list.append({"url": d_url.replace("\\u0026", "&"), "ext": "jpg"})
+
+                # 2. Extract og: tags for single post
+                og_image = re.search(r'<meta property="og:image" content="(.*?)"', html)
+                og_video = re.search(r'<meta property="og:video" content="(.*?)"', html)
+                og_title = re.search(r'<meta property="og:title" content="(.*?)"', html)
+
+                final_type = "image"
+                if not media_list:
+                    if og_video:
+                        final_type = "video"
+                        media_list.append({"url": og_video.group(1), "ext": "mp4"})
+                    elif og_image:
+                        media_list.append({"url": og_image.group(1), "ext": "jpg"})
+
+                if not media_list:
+                    return json.dumps({"error": "Unable to fetch Instagram media"})
+
+                return json.dumps({
+                    "is_ytdlp": False,
+                    "type": final_type,
+                    "media": media_list,
+                    "thumbnail": og_image.group(1) if og_image else (media_list[0]["url"] if media_list else None),
+                    "title": og_title.group(1) if og_title else "Instagram Media"
+                })
+
+        except Exception as e2:
+            print("INSTA_ERROR (Scraper):", str(e2))
+            return json.dumps({"error": "Unable to fetch media from this post"})
+
+
+def download_instagram_image(url, output_path):
+    try:
+        urllib.request.urlretrieve(url, output_path)
+        return json.dumps({"status": "success", "file_path": output_path})
+    except Exception as e:
+        return json.dumps({"status": "error", "error": str(e)})
 
 
 # ✅ SIMPLE FORMAT (NO MERGE EVER)
