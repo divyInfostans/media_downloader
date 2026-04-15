@@ -8,13 +8,12 @@ def get_video_info(url):
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
-        "nocheckcertificate": True,
-        "user_agent": "Mozilla/5.0",
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
+            print("INSTA_SUCCESS", info.get("_type"), info.get("id"))
 
             formats = info.get("formats", [])
             video_formats = []
@@ -90,17 +89,16 @@ def get_instagram_info(url):
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
-        "skip_download": True,
-        "nocheckcertificate": True,
-        "user_agent": "Mozilla/5.0",
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
+            print("INSTA_SUCCESS", info.get("_type"), info.get("id"))
             return json.dumps(info)
 
     except Exception as e:
+        print("INSTA_ERROR", str(e))
         return json.dumps({
             "error": str(e)
         })
@@ -112,6 +110,13 @@ def get_format(format_id, is_audio, is_progressive):
 
 
 def download_video(url, format_id, output_path, is_audio, is_progressive, progress_callback):
+    # ATTEMPT EXTRACTION FIRST (METADATA ONLY)
+    try:
+        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True}) as ydl:
+            ydl.extract_info(url, download=False)
+    except:
+        pass
+
     def progress_hook(d):
         if d['status'] == 'downloading':
             total = d.get('total_bytes') or d.get('total_bytes_estimate')
@@ -137,18 +142,18 @@ def download_video(url, format_id, output_path, is_audio, is_progressive, progre
                 pass
 
     ydl_opts = {
-        "format": format_id,  # ✅ ALWAYS direct (no merge)
+        "format": format_id,
         "outtmpl": f"{output_path}/%(title)s.%(ext)s",
         "progress_hooks": [progress_hook],
-        "quiet": False,
+        "quiet": True,
         "no_warnings": True,
-        "nocheckcertificate": True,
         "noplaylist": True,
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
+            print("INSTA_SUCCESS", info.get("_type"), info.get("id"))
 
             final_path = ydl.prepare_filename(info)
 
