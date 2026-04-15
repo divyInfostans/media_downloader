@@ -121,66 +121,85 @@ def get_instagram_info(url):
         error_msg = str(e)
         print("INSTA_ERROR (yt-dlp):", error_msg)
 
-        # STEP 2: FALLBACK to HTML scraping
-        print("INSTA_DEBUG: Falling back to HTML scraping")
+        # STEP 2: FALLBACK to JSON extraction
+        print("INSTA_DEBUG: Falling back to JSON extraction")
         try:
+            # 1. Normalize URL and append params
+            cleaned_url = url.split("?")[0].rstrip("/")
+            api_url = f"{cleaned_url}/?__a=1&__d=dis"
+
             headers = { "User-Agent": "Mozilla/5.0" }
-            req = urllib.request.Request(url, headers=headers)
+            req = urllib.request.Request(api_url, headers=headers)
             with urllib.request.urlopen(req) as response:
-                html = response.read().decode('utf-8')
+                data = json.loads(response.read().decode('utf-8'))
+
+                # Check for graphql or direct shortcode_media
+                media = None
+                if "graphql" in data:
+                    media = data["graphql"].get("shortcode_media")
+                elif "items" in data and len(data["items"]) > 0:
+                    # Alternative structure sometimes returned by ?__a=1
+                    item = data["items"][0]
+                    # Map to a unified structure if needed, but let's try sharedData fallback if this is too complex
+                    media = item
+
+                if not media:
+                    # FALLBACK: Extract from window._sharedData in HTML
+                    req_html = urllib.request.Request(cleaned_url, headers=headers)
+                    with urllib.request.urlopen(req_html) as response_html:
+                        html = response_html.read().decode('utf-8')
+                        json_match = re.search(r'window\._sharedData\s*=\s*({.*?});', html)
+                        if json_match:
+                            shared_data = json.loads(json_match.group(1))
+                            # Navigate to shortcode_media
+                            try:
+                                media = shared_data["entry_data"]["PostPage"][0]["graphql"]["shortcode_media"]
+                            except:
+                                pass
+
+                if not media:
+                    return json.dumps({"error": "Unable to fetch Instagram media"})
 
                 media_list = []
+                typename = media.get("__typename")
 
-                # 1. Extract FULL Image from JSON Data in HTML
-                # Priority: display_resources or image_versions2
-                display_resources = re.findall(r'"display_resources":\[(.*?)\]', html)
-                if display_resources:
-                    for resources_str in display_resources:
-                        # Extract all src within this resource set
-                        srcs = re.findall(r'"src":"(.*?)"', resources_str)
-                        if srcs:
-                            # Pick the LAST one (highest resolution)
-                            full_url = clean_url(srcs[-1])
-                            if full_url not in [m["url"] for m in media_list]:
-                                print("FINAL_FULL_RES_URL:", full_url)
-                                media_list.append({"url": full_url, "ext": "jpg"})
-
-                # 2. Extract og: tags for single post / Fallback
-                og_image = re.search(r'<meta property="og:image" content="(.*?)"', html)
-                og_video = re.search(r'<meta property="og:video" content="(.*?)"', html)
-                og_title = re.search(r'<meta property="og:title" content="(.*?)"', html)
-
-                final_type = "image"
-                if not media_list:
-                    if og_video:
-                        final_type = "video"
-                        cleaned = clean_url(og_video.group(1))
-                        print("FINAL_URL (video):", cleaned)
-                        media_list.append({"url": cleaned, "ext": "mp4"})
-                    elif og_image:
-                        # Strip transformations for og:image fallback
-                        raw_og = clean_url(og_image.group(1))
-                        cleaned = re.sub(r'\/s\d+x\d+\/|stp=c.*?&|dst-jpg.*?&', '/', raw_og).replace("//", "/")
-                        if cleaned.startswith("/"): cleaned = "https:/" + cleaned # basic fixup if re messed up
-                        if "https:/" in cleaned and not cleaned.startswith("https://"):
-                             cleaned = cleaned.replace("https:/", "https://")
-
-                        print("FINAL_FULL_RES_URL (og fallback):", cleaned)
-                        media_list.append({"url": cleaned, "ext": "jpg"})
+                # CASE C: CAROUSEL
+                if typename == "GraphSidecar" or "edge_sidecar_to_children" in media:
+                    edges = media.get("edge_sidecar_to_children", {}).get("edges", [])
+                    for edge in edges:
+                        node = edge.get("node", {})
+                        if node.get("is_video"):
+                            media_list.append({"url": clean_url(node.get("video_url")), "ext": "mp4"})
+                        else:
+                            media_list.append({"url": clean_url(node.get("display_url")), "ext": "jpg"})
+                    final_type = "carousel"
+                # CASE B: VIDEO
+                elif media.get("is_video"):
+                    media_list.append({"url": clean_url(media.get("video_url")), "ext": "mp4"})
+                    final_type = "video"
+                # CASE A: SINGLE IMAGE
+                else:
+                    media_list.append({"url": clean_url(media.get("display_url")), "ext": "jpg"})
+                    final_type = "image"
 
                 if not media_list:
                     return json.dumps({"error": "Unable to fetch Instagram media"})
+
+                # MANDATORY LOGS
+                print(f"MEDIA_TYPE: {final_type}")
+                print(f"MEDIA_COUNT: {len(media_list)}")
+                print(f"FIRST_URL: {media_list[0]['url'][:50]}...")
 
                 return json.dumps({
                     "is_ytdlp": False,
                     "type": final_type,
                     "media": media_list,
-                    "thumbnail": media_list[0]["url"] if media_list else None,
-                    "title": og_title.group(1) if og_title else "Instagram Media"
+                    "thumbnail": media_list[0]["url"],
+                    "title": media.get("owner", {}).get("username") or "Instagram Media"
                 })
 
         except Exception as e2:
-            print("INSTA_ERROR (Scraper):", str(e2))
+            print("INSTA_ERROR (JSON Extraction):", str(e2))
             return json.dumps({"error": "Unable to fetch media from this post"})
 
 
