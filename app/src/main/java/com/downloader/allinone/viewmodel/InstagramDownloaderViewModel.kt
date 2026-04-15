@@ -240,29 +240,18 @@ class InstagramDownloaderViewModel(application: Application) : AndroidViewModel(
                     val subDir = "DownloaderAllInOne"
                     val fullPath = "$subDir/$fileName"
 
-                    if (item.type == MediaType.IMAGE) {
-                        // Use direct download for images via Python or specialized logic
-                        val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                        val appDir = File(downloadsDir, subDir)
-                        if (!appDir.exists()) appDir.mkdirs()
-                        val destinationFile = File(appDir, fileName)
+                    val mimeType = if (item.type == MediaType.VIDEO) "video/mp4" else "image/jpeg"
+                    val request = DownloadManager.Request(Uri.parse(item.url))
+                        .setTitle("Instagram Download")
+                        .setDescription("Downloading ${item.type}...")
+                        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                        .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fullPath)
+                        .setMimeType(mimeType)
+                        .addRequestHeader("User-Agent", "Mozilla/5.0")
+                        .addRequestHeader("Referer", "https://www.instagram.com/")
 
-                        module.callAttr("download_instagram_image", item.url, destinationFile.absolutePath)
-                        Log.d(TAG, "Image downloaded via urllib: $fileName")
-                    } else {
-                        // Use DownloadManager for videos (already working)
-                        val request = DownloadManager.Request(Uri.parse(item.url))
-                            .setTitle("Instagram Download")
-                            .setDescription("Downloading ${item.type}...")
-                            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fullPath)
-                            .setMimeType("video/mp4")
-                            .addRequestHeader("User-Agent", "Mozilla/5.0")
-                            .addRequestHeader("Referer", "https://www.instagram.com/")
-
-                        downloadManager.enqueue(request)
-                        Log.d(TAG, "Video enqueued via DownloadManager: $fileName")
-                    }
+                    downloadManager.enqueue(request)
+                    Log.d(TAG, "Enqueued via DownloadManager: $fileName")
                 }
 
                 _uiState.update {

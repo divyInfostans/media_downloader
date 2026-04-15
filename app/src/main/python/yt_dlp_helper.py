@@ -129,18 +129,23 @@ def get_instagram_info(url):
             with urllib.request.urlopen(req) as response:
                 html = response.read().decode('utf-8')
 
-                # 1. Extract Media
                 media_list = []
 
-                # Try Carousel first (JSON-like scraping from HTML)
-                display_urls = re.findall(r'"display_url":"(.*?)"', html)
-                if display_urls:
-                    for d_url in list(dict.fromkeys(display_urls)): # unique urls
-                        cleaned = clean_url(d_url)
-                        print("FINAL_URL (carousel):", cleaned)
-                        media_list.append({"url": cleaned, "ext": "jpg"})
+                # 1. Extract FULL Image from JSON Data in HTML
+                # Priority: display_resources or image_versions2
+                display_resources = re.findall(r'"display_resources":\[(.*?)\]', html)
+                if display_resources:
+                    for resources_str in display_resources:
+                        # Extract all src within this resource set
+                        srcs = re.findall(r'"src":"(.*?)"', resources_str)
+                        if srcs:
+                            # Pick the LAST one (highest resolution)
+                            full_url = clean_url(srcs[-1])
+                            if full_url not in [m["url"] for m in media_list]:
+                                print("FINAL_FULL_RES_URL:", full_url)
+                                media_list.append({"url": full_url, "ext": "jpg"})
 
-                # 2. Extract og: tags for single post
+                # 2. Extract og: tags for single post / Fallback
                 og_image = re.search(r'<meta property="og:image" content="(.*?)"', html)
                 og_video = re.search(r'<meta property="og:video" content="(.*?)"', html)
                 og_title = re.search(r'<meta property="og:title" content="(.*?)"', html)
@@ -153,8 +158,14 @@ def get_instagram_info(url):
                         print("FINAL_URL (video):", cleaned)
                         media_list.append({"url": cleaned, "ext": "mp4"})
                     elif og_image:
-                        cleaned = clean_url(og_image.group(1))
-                        print("FINAL_URL (image):", cleaned)
+                        # Strip transformations for og:image fallback
+                        raw_og = clean_url(og_image.group(1))
+                        cleaned = re.sub(r'\/s\d+x\d+\/|stp=c.*?&|dst-jpg.*?&', '/', raw_og).replace("//", "/")
+                        if cleaned.startswith("/"): cleaned = "https:/" + cleaned # basic fixup if re messed up
+                        if "https:/" in cleaned and not cleaned.startswith("https://"):
+                             cleaned = cleaned.replace("https:/", "https://")
+
+                        print("FINAL_FULL_RES_URL (og fallback):", cleaned)
                         media_list.append({"url": cleaned, "ext": "jpg"})
 
                 if not media_list:
@@ -164,7 +175,7 @@ def get_instagram_info(url):
                     "is_ytdlp": False,
                     "type": final_type,
                     "media": media_list,
-                    "thumbnail": og_image.group(1) if og_image else (media_list[0]["url"] if media_list else None),
+                    "thumbnail": media_list[0]["url"] if media_list else None,
                     "title": og_title.group(1) if og_title else "Instagram Media"
                 })
 
