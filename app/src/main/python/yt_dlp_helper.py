@@ -8,12 +8,13 @@ def get_video_info(url):
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
+        "nocheckcertificate": True,
+        "user_agent": "Mozilla/5.0",
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            print("INSTA_SUCCESS", info.get("_type"), info.get("id"))
 
             formats = info.get("formats", [])
             video_formats = []
@@ -87,21 +88,45 @@ import re
 
 def get_instagram_info(url):
     ydl_opts = {
-        "quiet": True,
-        "no_warnings": True,
+        'quiet': True,
+        'no_warnings': True,
+        'extract_flat': False,
+        'skip_download': True,
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            print("INSTA_SUCCESS", info.get("_type"), info.get("id"))
+
+            if info is None:
+                raise Exception("Empty response")
+
+            print("INSTA_FINAL:", list(info.keys()))
             return json.dumps(info)
 
     except Exception as e:
-        print("INSTA_ERROR", str(e))
-        return json.dumps({
-            "error": str(e)
-        })
+        error_msg = str(e)
+        print("INSTA_ERROR:", error_msg)
+
+        if "There is no video in this post" in error_msg:
+            print("DEBUG: Retrying with generic extractor fallback")
+            try:
+                ydl_opts_fallback = {
+                    'quiet': True,
+                    'no_warnings': True,
+                    'force_generic_extractor': True,
+                    'skip_download': True,
+                }
+                with yt_dlp.YoutubeDL(ydl_opts_fallback) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                    if info:
+                        print("INSTA_FINAL (Fallback):", list(info.keys()))
+                        return json.dumps(info)
+            except Exception as e2:
+                print("INSTA_ERROR (Fallback):", str(e2))
+                return json.dumps({"error": str(e2)})
+
+        return json.dumps({"error": error_msg})
 
 
 # ✅ SIMPLE FORMAT (NO MERGE EVER)
@@ -110,13 +135,6 @@ def get_format(format_id, is_audio, is_progressive):
 
 
 def download_video(url, format_id, output_path, is_audio, is_progressive, progress_callback):
-    # ATTEMPT EXTRACTION FIRST (METADATA ONLY)
-    try:
-        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True}) as ydl:
-            ydl.extract_info(url, download=False)
-    except:
-        pass
-
     def progress_hook(d):
         if d['status'] == 'downloading':
             total = d.get('total_bytes') or d.get('total_bytes_estimate')
@@ -142,18 +160,18 @@ def download_video(url, format_id, output_path, is_audio, is_progressive, progre
                 pass
 
     ydl_opts = {
-        "format": format_id,
+        "format": format_id,  # ✅ ALWAYS direct (no merge)
         "outtmpl": f"{output_path}/%(title)s.%(ext)s",
         "progress_hooks": [progress_hook],
-        "quiet": True,
+        "quiet": False,
         "no_warnings": True,
+        "nocheckcertificate": True,
         "noplaylist": True,
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            print("INSTA_SUCCESS", info.get("_type"), info.get("id"))
 
             final_path = ydl.prepare_filename(info)
 
