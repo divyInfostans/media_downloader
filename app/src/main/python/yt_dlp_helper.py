@@ -90,6 +90,7 @@ def get_instagram_info(url):
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
+        "skip_download": True,
         "nocheckcertificate": True,
         "user_agent": "Mozilla/5.0",
     }
@@ -101,8 +102,7 @@ def get_instagram_info(url):
 
     except Exception as e:
         return json.dumps({
-            "error": "Unable to fetch media",
-            "traceback": traceback.format_exc()
+            "error": str(e)
         })
 
 
