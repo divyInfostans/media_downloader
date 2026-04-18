@@ -83,6 +83,145 @@ def get_video_info(url):
         })
 
 
+import urllib.request
+import re
+
+def clean_url(url):
+    if not url:
+        return url
+    return (
+        url.replace("&amp;", "&")
+           .replace("\\u0026", "&")
+           .replace("\\/", "/")
+    )
+
+def get_instagram_info(url):
+    ydl_opts = {
+        'quiet': True,
+        'no_warnings': True,
+        'extract_flat': False,
+        'skip_download': True,
+    }
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9"
+    }
+
+    try:
+        # STEP 1: yt-dlp (VIDEO ONLY)
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            if info and (info.get("is_video") or info.get("formats")):
+                print("SOURCE: yt-dlp")
+                print(f"MEDIA_TYPE: video")
+                print(f"MEDIA_COUNT: 1")
+                return json.dumps({
+                    "is_ytdlp": True,
+                    "raw": info
+                })
+            else:
+                raise Exception("There is no video in this post")
+
+    except Exception as e:
+        error_msg = str(e)
+        if "There is no video in this post" not in error_msg:
+             print("INSTA_ERROR (yt-dlp):", error_msg)
+
+        # STEP 2: Extract JSON from HTML (PRIMARY SOLUTION)
+        print("INSTA_DEBUG: Falling back to sharedData extraction")
+        try:
+            cleaned_url = url.split("?")[0].rstrip("/")
+            req = urllib.request.Request(cleaned_url, headers=headers)
+            with urllib.request.urlopen(req) as response:
+                html = response.read().decode('utf-8')
+
+                # Regex for window._sharedData
+                json_match = re.search(r'window\._sharedData\s*=\s*(\{.*?\});', html)
+
+                media = None
+                if json_match:
+                    data = json.loads(json_match.group(1))
+                    try:
+                        media = data["entry_data"]["PostPage"][0]["graphql"]["shortcode_media"]
+                    except:
+                        pass
+
+                if media:
+                    media_list = []
+                    typename = media.get("__typename")
+
+                    # STEP 3: PARSE MEDIA (CRITICAL)
+                    if typename == "GraphSidecar":
+                        edges = media.get("edge_sidecar_to_children", {}).get("edges", [])
+                        for edge in edges:
+                            node = edge.get("node", {})
+                            if node.get("is_video"):
+                                media_list.append({"url": clean_url(node.get("video_url")), "ext": "mp4"})
+                            else:
+                                media_list.append({"url": clean_url(node.get("display_url")), "ext": "jpg"})
+                        final_type = "carousel"
+                    elif typename == "GraphVideo":
+                        media_list.append({"url": clean_url(media.get("video_url")), "ext": "mp4"})
+                        final_type = "video"
+                    elif typename == "GraphImage":
+                        media_list.append({"url": clean_url(media.get("display_url")), "ext": "jpg"})
+                        final_type = "image"
+                    else:
+                        # Typename missing, try is_video
+                        if media.get("is_video"):
+                            media_list.append({"url": clean_url(media.get("video_url")), "ext": "mp4"})
+                            final_type = "video"
+                        else:
+                            media_list.append({"url": clean_url(media.get("display_url")), "ext": "jpg"})
+                            final_type = "image"
+
+                    print("SOURCE: sharedData")
+                    print(f"MEDIA_TYPE: {final_type}")
+                    print(f"MEDIA_COUNT: {len(media_list)}")
+                    print(f"FIRST_URL: {media_list[0]['url'][:50]}...")
+
+                    return json.dumps({
+                        "is_ytdlp": False,
+                        "type": final_type,
+                        "media": media_list,
+                        "thumbnail": media_list[0]["url"],
+                        "title": media.get("owner", {}).get("username") or "Instagram Media"
+                    })
+
+                # STEP 6: LAST RESORT FALLBACK
+                print("INSTA_DEBUG: Falling back to og:tags")
+                og_image = re.search(r'<meta property="og:image" content="(.*?)"', html)
+                if og_image:
+                    img_url = clean_url(og_image.group(1))
+                    if "static.cdninstagram.com" not in img_url:
+                        print("SOURCE: fallback")
+                        print(f"MEDIA_TYPE: image")
+                        print(f"MEDIA_COUNT: 1")
+                        return json.dumps({
+                            "is_ytdlp": False,
+                            "type": "image",
+                            "media": [{"url": img_url, "ext": "jpg"}],
+                            "thumbnail": img_url,
+                            "title": "Instagram Media"
+                        })
+
+                return json.dumps({"error": "Unable to fetch Instagram media"})
+
+        except Exception as e2:
+            print("INSTA_ERROR (Final):", str(e2))
+            return json.dumps({"error": "Unable to fetch media from this post"})
+
+
+def download_instagram_image(url, output_path):
+    try:
+        url = clean_url(url)
+        urllib.request.urlretrieve(url, output_path)
+        return json.dumps({"status": "success", "file_path": output_path})
+    except Exception as e:
+        return json.dumps({"status": "error", "error": str(e)})
+
+
 # ✅ SIMPLE FORMAT (NO MERGE EVER)
 def get_format(format_id, is_audio, is_progressive):
     return format_id

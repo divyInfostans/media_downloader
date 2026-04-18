@@ -29,6 +29,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import android.content.Intent
 import com.downloader.allinone.ui.youtube.YouTubeDownloaderActivity
 import com.downloader.allinone.ui.whatsapp.WhatsAppStatusActivity
+import com.downloader.allinone.ui.instagram.InstagramDownloaderActivity
 import androidx.compose.ui.tooling.preview.Preview
 import com.downloader.allinone.ui.theme.DownloaderAllInOneTheme
 
@@ -172,7 +173,10 @@ fun DashboardScreenContent(
                             name = "Instagram",
                             icon = Icons.Default.PhotoCamera,
                             iconColor = Color(0xFFE4405F),
-                            onClick = { viewModel?.onServiceClick("Instagram") },
+                            onClick = {
+                                viewModel?.onServiceClick("Instagram")
+                                context.startActivity(Intent(context, InstagramDownloaderActivity::class.java))
+                            },
                             modifier = Modifier.weight(1f)
                         )
                     }
